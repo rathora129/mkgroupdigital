@@ -1,0 +1,68 @@
+'use client';
+
+import {
+  Code2,
+  PenTool,
+  Search,
+  Megaphone,
+  Share2,
+  Palette,
+  ShoppingBag,
+  PanelsTopLeft,
+  Compass,
+  Sparkles,
+  Cpu,
+  Gauge,
+  MessagesSquare,
+  Globe2,
+  GraduationCap,
+  HeartPulse,
+  Building2,
+  UtensilsCrossed,
+  Rocket,
+  Briefcase,
+  Landmark,
+  Quote,
+  ShieldCheck,
+  Zap,
+  MousePointerClick,
+  LayoutGrid,
+  LineChart,
+  Layers,
+} from 'lucide-react';
+
+const icons = {
+  Code2,
+  PenTool,
+  Search,
+  Megaphone,
+  Share2,
+  Palette,
+  ShoppingBag,
+  PanelsTopLeft,
+  Compass,
+  Sparkles,
+  Cpu,
+  Gauge,
+  MessagesSquare,
+  Globe2,
+  GraduationCap,
+  HeartPulse,
+  Building2,
+  UtensilsCrossed,
+  Rocket,
+  Briefcase,
+  Landmark,
+  Quote,
+  ShieldCheck,
+  Zap,
+  MousePointerClick,
+  LayoutGrid,
+  LineChart,
+  Layers,
+};
+
+export default function Icon({ name, size = 20, strokeWidth = 1.7, ...rest }) {
+  const Component = icons[name] || Sparkles;
+  return <Component size={size} strokeWidth={strokeWidth} aria-hidden="true" {...rest} />;
+}
