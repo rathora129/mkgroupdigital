@@ -2,13 +2,15 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, ExternalLink } from 'lucide-react';
 import styled, { css } from 'styled-components';
 import { media } from '@/styles/theme';
 
-const Card = styled(Link)`
+const Card = styled.article`
+  position: relative;
   display: flex;
   flex-direction: column;
+  height: 100%;
   border-radius: ${({ theme }) => theme.radius.lg};
   border: 1px solid ${({ theme }) => theme.colors.line};
   background: ${({ theme }) => theme.colors.card};
@@ -31,6 +33,18 @@ const Card = styled(Link)`
   &:hover .project-arrow {
     transform: translate(3px, -3px);
     color: ${({ theme }) => theme.colors.violetSoft};
+  }
+`;
+
+const StretchedLink = styled(Link)`
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+
+  &:focus-visible {
+    outline: 2px solid rgba(124, 92, 255, 0.7);
+    outline-offset: 3px;
   }
 `;
 
@@ -94,17 +108,13 @@ const Status = styled.span`
 `;
 
 const Info = styled.div`
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.9rem;
+  flex: 1;
   padding: 1.4rem 1.6rem 1.5rem;
-`;
-
-const TopLine = styled.div`
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
 `;
 
 const Name = styled.h3`
@@ -118,6 +128,12 @@ const Industry = styled.span`
   font-size: 0.78rem;
   color: ${({ theme }) => theme.colors.muted};
   letter-spacing: 0.02em;
+`;
+
+const Summary = styled.p`
+  font-size: 0.86rem;
+  line-height: 1.65;
+  color: ${({ theme }) => theme.colors.muted};
 `;
 
 const Tags = styled.div`
@@ -139,8 +155,16 @@ const Bottom = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
+  margin-top: auto;
   padding-top: 1rem;
   border-top: 1px solid ${({ theme }) => theme.colors.lineSoft};
+`;
+
+const ViewProject = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   color: ${({ theme }) => theme.colors.textSoft};
   font-size: 0.78rem;
   font-weight: 600;
@@ -154,9 +178,44 @@ const Arrow = styled.span`
     color 0.3s ease;
 `;
 
+const VisitLive = styled.a`
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid ${({ theme }) => theme.colors.lineStrong};
+  background: rgba(255, 255, 255, 0.04);
+  color: ${({ theme }) => theme.colors.text};
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    border-color 0.3s ease,
+    background 0.3s ease,
+    transform 0.3s ease;
+
+  &:hover {
+    border-color: ${({ theme }) => theme.colors.violetLine};
+    background: ${({ theme }) => theme.colors.violetWash};
+    transform: translateY(-1px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(124, 92, 255, 0.7);
+    outline-offset: 2px;
+  }
+`;
+
 export default function ProjectCard({ project, wide = false }) {
   return (
-    <Card href={`/work/${project.slug}`} $wide={wide}>
+    <Card>
+      <StretchedLink
+        href={`/work/${project.slug}`}
+        aria-label={`View the ${project.name} project`}
+      />
       <Media
         className="project-media"
         $wide={wide}
@@ -175,22 +234,33 @@ export default function ProjectCard({ project, wide = false }) {
         <Status $pending={project.status !== 'Live'}>{project.status}</Status>
       </Media>
       <Info>
-        <TopLine>
-          <div>
-            <Name>{project.name}</Name>
-            <Industry>{project.industry}</Industry>
-          </div>
-        </TopLine>
+        <div>
+          <Name>{project.name}</Name>
+          <Industry>{project.industry}</Industry>
+        </div>
+        <Summary>{project.summary}</Summary>
         <Tags>
           {project.services.slice(0, 3).map((service) => (
             <span key={service}>{service}</span>
           ))}
         </Tags>
         <Bottom>
-          <span>View project</span>
-          <Arrow className="project-arrow" aria-hidden="true">
-            <ArrowUpRight size={17} strokeWidth={1.9} />
-          </Arrow>
+          <ViewProject>
+            View project
+            <Arrow className="project-arrow" aria-hidden="true">
+              <ArrowUpRight size={16} strokeWidth={1.9} />
+            </Arrow>
+          </ViewProject>
+          {project.url ? (
+            <VisitLive
+              href={project.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Visit Live Website
+              <ExternalLink size={13} strokeWidth={2} aria-hidden="true" />
+            </VisitLive>
+          ) : null}
         </Bottom>
       </Info>
     </Card>

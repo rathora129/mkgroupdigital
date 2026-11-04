@@ -12,13 +12,13 @@ import Button from '@/components/ui/Button';
 import Icon from '@/components/ui/Icon';
 import ProcessSection from '@/components/sections/ProcessSection';
 import CtaSection from '@/components/sections/CtaSection';
-import services from '@/data/services';
+import { serviceCategories, services } from '@/data/services';
 import siteConfig from '@/data/site';
 import { media } from '@/styles/theme';
 
 const CapabilityGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 0.55rem;
   width: 100%;
   padding: 1rem;
@@ -55,103 +55,152 @@ const Capability = styled(Link)`
   }
 `;
 
-const List = styled.div`
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid ${({ theme }) => theme.colors.line};
-  margin-top: clamp(2.5rem, 5vw, 3.75rem);
-`;
-
-const Row = styled(Link)`
+const CategoryGrid = styled.div`
   display: grid;
-  grid-template-columns: 58px 1.05fr 1.35fr 44px;
-  align-items: center;
-  gap: clamp(1rem, 3vw, 2.5rem);
-  padding: 1.75rem 0.5rem;
-  border-bottom: 1px solid ${({ theme }) => theme.colors.line};
-  transition:
-    background 0.35s ease,
-    padding 0.35s ease;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.02);
-    padding-inline: 1.1rem;
-  }
-
-  &:hover .service-glyph {
-    background: linear-gradient(135deg, rgba(124, 92, 255, 0.3), rgba(77, 141, 255, 0.16));
-    border-color: ${({ theme }) => theme.colors.violetLine};
-    color: ${({ theme }) => theme.colors.violetSoft};
-  }
-
-  &:hover .service-arrow {
-    color: ${({ theme }) => theme.colors.violetSoft};
-    transform: translate(3px, -3px);
-  }
+  grid-template-columns: 1fr 1fr;
+  gap: 1.1rem;
+  margin-top: clamp(2.5rem, 5vw, 3.75rem);
 
   ${media.down('md')} {
-    grid-template-columns: 46px 1fr 34px;
-    gap: 0.9rem 1rem;
-    padding-block: 1.5rem;
+    grid-template-columns: 1fr;
   }
 `;
 
-const Glyph = styled.span`
+const Category = styled.article`
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: clamp(1.5rem, 3vw, 2.1rem);
+  border-radius: ${({ theme }) => theme.radius.lg};
+  border: 1px solid ${({ theme }) => theme.colors.line};
+  background: ${({ theme }) => theme.gradients.card};
+  transition:
+    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.35s ease;
+
+  &:hover {
+    transform: translateY(-4px);
+    border-color: ${({ theme }) => theme.colors.violetLine};
+  }
+`;
+
+const CategoryHead = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+`;
+
+const CategoryGlyph = styled.span`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
+  width: 50px;
+  height: 50px;
+  border-radius: 15px;
   border: 1px solid ${({ theme }) => theme.colors.line};
   background: rgba(255, 255, 255, 0.03);
+  color: ${({ theme }) => theme.colors.violetSoft};
+`;
+
+const CategoryIndex = styled.span`
+  font-family: ${({ theme }) => theme.fonts.display};
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  color: ${({ theme }) => theme.colors.faint};
+`;
+
+const CategoryTitle = styled.h3`
+  font-size: clamp(1.25rem, 2.4vw, 1.55rem);
+  letter-spacing: -0.03em;
+`;
+
+const CategoryCopy = styled.p`
+  font-size: 0.92rem;
+  line-height: 1.7;
+  color: ${({ theme }) => theme.colors.muted};
+`;
+
+const ItemGrid = styled.ul`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem 1rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid ${({ theme }) => theme.colors.lineSoft};
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.83rem;
+    line-height: 1.45;
+    color: ${({ theme }) => theme.colors.textSoft};
+
+    &::before {
+      content: '';
+      flex-shrink: 0;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: ${({ theme }) => theme.colors.violet};
+      transform: translateY(-2px);
+    }
+  }
+
+  ${media.down('xs')} {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const CategoryFoot = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 1.1rem;
+  border-top: 1px solid ${({ theme }) => theme.colors.lineSoft};
+`;
+
+const StartingPrice = styled.span`
+  font-size: 0.76rem;
+  color: ${({ theme }) => theme.colors.faint};
+
+  strong {
+    font-family: ${({ theme }) => theme.fonts.display};
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: ${({ theme }) => theme.colors.text};
+  }
+`;
+
+const CategoryLinks = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+`;
+
+const DetailLink = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid ${({ theme }) => theme.colors.line};
+  font-size: 0.74rem;
+  font-weight: 600;
   color: ${({ theme }) => theme.colors.textSoft};
   transition:
-    background 0.35s ease,
-    border-color 0.35s ease,
-    color 0.35s ease;
-
-  ${media.down('md')} {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-  }
-`;
-
-const RowTitle = styled.h3`
-  font-size: clamp(1.15rem, 2.2vw, 1.5rem);
-  letter-spacing: -0.03em;
-
-  small {
-    display: block;
-    margin-top: 0.4rem;
-    font-family: ${({ theme }) => theme.fonts.body};
-    font-size: 0.7rem;
-    font-weight: 500;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: ${({ theme }) => theme.colors.faint};
-  }
-`;
-
-const RowCopy = styled.p`
-  font-size: 0.9rem;
-  line-height: 1.65;
-  color: ${({ theme }) => theme.colors.muted};
-
-  ${media.down('md')} {
-    grid-column: 2 / -1;
-    grid-row: 2;
-  }
-`;
-
-const RowArrow = styled.span`
-  display: inline-flex;
-  justify-content: flex-end;
-  color: ${({ theme }) => theme.colors.faint};
-  transition:
-    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.3s ease,
+    background 0.3s ease,
     color 0.3s ease;
+
+  &:hover {
+    border-color: ${({ theme }) => theme.colors.violetLine};
+    background: ${({ theme }) => theme.colors.violetWash};
+    color: ${({ theme }) => theme.colors.text};
+  }
 `;
 
 const Models = styled.div`
@@ -220,12 +269,12 @@ export default function ServicesIndexView() {
         eyebrow="Services"
         title={
           <>
-            Everything your brand
+            Everything your business
             <br />
             needs to <em>grow.</em>
           </>
         }
-        description="Strategy, design, engineering and growth — connected under one roof. Choose a single capability or bring us in across the whole journey."
+        description="Websites, custom business software, digital marketing and branding — a complete digital solutions agency under one roof."
         actions={
           <>
             <Button href="/contact" size="lg">
@@ -244,49 +293,74 @@ export default function ServicesIndexView() {
           </>
         }
         aside={
-          <CapabilityGrid aria-label="All services">
-            {services.map((service) => (
-              <Capability key={service.slug} href={`/services/${service.slug}`}>
-                <Icon name={service.icon} size={16} />
-                {service.shortTitle}
+          <CapabilityGrid aria-label="Service categories">
+            {serviceCategories.map((category) => (
+              <Capability key={category.slug} href={`/services#${category.slug}`}>
+                <Icon name={category.icon} size={16} />
+                {category.title}
               </Capability>
             ))}
           </CapabilityGrid>
         }
       />
 
-      <Section aria-labelledby="capabilities-heading">
-        <Container>
+      <Section aria-labelledby="catalog-heading">
+        <Container $width="wide">
           <SectionHeading
-            eyebrow="Capabilities"
+            eyebrow="Full service catalog"
             title={
               <>
-                Eight services. <em>One connected team.</em>
+                Four capabilities. <em>One connected team.</em>
               </>
             }
-            description="Each service is strong on its own. Together they remove the gaps that appear when strategy, design, build and growth sit in separate places."
-            headingId="capabilities-heading"
+            description="Every category below is delivered by the same team, so strategy, design, build and growth stay connected from day one. Prices shown are indicative starting points."
+            headingId="catalog-heading"
           />
 
-          <List>
-            {services.map((service, index) => (
-              <Reveal key={service.slug} delay={index * 0.04} y={18}>
-                <Row href={`/services/${service.slug}`}>
-                  <Glyph className="service-glyph">
-                    <Icon name={service.icon} size={22} />
-                  </Glyph>
-                  <RowTitle>
-                    {service.title}
-                    <small>Service {String(index + 1).padStart(2, '0')}</small>
-                  </RowTitle>
-                  <RowCopy>{service.short}</RowCopy>
-                  <RowArrow className="service-arrow" aria-hidden="true">
-                    <ArrowUpRight size={20} strokeWidth={1.8} />
-                  </RowArrow>
-                </Row>
+          <CategoryGrid>
+            {serviceCategories.map((category, index) => (
+              <Reveal key={category.slug} delay={(index % 2) * 0.07} y={20}>
+                <Category id={category.slug}>
+                  <CategoryHead>
+                    <CategoryGlyph>
+                      <Icon name={category.icon} size={22} />
+                    </CategoryGlyph>
+                    <CategoryIndex>
+                      {String(index + 1).padStart(2, '0')}
+                    </CategoryIndex>
+                  </CategoryHead>
+                  <div>
+                    <CategoryTitle>{category.title}</CategoryTitle>
+                    <CategoryCopy style={{ marginTop: '0.6rem' }}>
+                      {category.short}
+                    </CategoryCopy>
+                  </div>
+                  <ItemGrid>
+                    {category.items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ItemGrid>
+                  <CategoryFoot>
+                    <StartingPrice>
+                      Starting at <strong>{category.startingPrice}</strong>
+                    </StartingPrice>
+                    <CategoryLinks>
+                      {category.services.map((slug) => {
+                        const service = services.find((item) => item.slug === slug);
+                        return service ? (
+                          <DetailLink key={slug} href={`/services/${slug}`}>
+                            {service.shortTitle}
+                            <ArrowUpRight size={12} />
+                          </DetailLink>
+                        ) : null;
+                      })}
+                      <DetailLink href="/pricing">Pricing</DetailLink>
+                    </CategoryLinks>
+                  </CategoryFoot>
+                </Category>
               </Reveal>
             ))}
-          </List>
+          </CategoryGrid>
 
           <Note>
             <Sparkles size={16} />

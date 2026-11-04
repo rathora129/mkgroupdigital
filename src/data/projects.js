@@ -13,8 +13,8 @@ export const projects = [
     imageWide: '/projects/rooteco-wide.jpg',
     imageAlt:
       'RootsEco corporate gifting brand cover with the RootsEco seal on a deep green background',
-    url: null,
-    status: 'Private build',
+    url: 'https://www.rootseco.com/',
+    status: 'Live',
     featured: true,
     summary:
       'A full corporate-gifting storefront and owner dashboard, managed from one connected system.',
@@ -27,7 +27,6 @@ export const projects = [
       'Build-your-own-hamper flow and quote requests',
       'Owner dashboard covering orders, leads, content and SEO',
     ],
-    note: 'Live preview available on request.',
   },
   {
     slug: 'multigraphics',
@@ -37,9 +36,9 @@ export const projects = [
     image: '/projects/multigraphics.jpg',
     imageAlt:
       'Multigraphics Group website hero presenting print, assessment and learning platforms',
-    url: 'https://multigraphics.in',
+    url: 'https://multigraphics.in/',
     status: 'Live',
-    featured: true,
+    featured: false,
     summary:
       'A group website bringing print production, OMR assessment and learning platforms under one clear brand.',
     overview: [
@@ -60,7 +59,7 @@ export const projects = [
     image: '/projects/dice-academy.jpg',
     imageAlt:
       'Dice Academy website hero promoting UGC-recognised degrees and industry training',
-    url: 'https://dice-academy.com',
+    url: 'https://www.dice-academy.com/',
     status: 'Live',
     featured: true,
     summary:
@@ -83,9 +82,9 @@ export const projects = [
     image: '/projects/techassistant.jpg',
     imageAlt:
       'Tech Assistant website hero for a custom software development company in India',
-    url: 'https://techassistant.co.in',
+    url: 'https://www.techassistant.co.in/',
     status: 'Live',
-    featured: true,
+    featured: false,
     summary:
       'A modern website for a Lucknow-based custom software company, with a conversational enquiry entry point.',
     overview: [
@@ -106,7 +105,7 @@ export const projects = [
     image: '/projects/oraanj.jpg',
     imageAlt:
       'Ooraanj Interiors website hero presenting bespoke London residential and commercial interiors',
-    url: 'https://oraanj-interiors.co.uk',
+    url: 'https://oraanj-interiors.co.uk/',
     status: 'Live',
     featured: true,
     summary:
@@ -119,6 +118,52 @@ export const projects = [
       'Service architecture across residential, commercial and renovation',
       'Project storytelling with before-and-after content',
       'Consultation and enquiry flows for UK and overseas clients',
+    ],
+  },
+  {
+    slug: 'havelock-island-beach-resort',
+    name: 'Havelock Island Beach Resort',
+    industry: 'Hospitality & Tourism',
+    services: ['Website Development', 'UI/UX Design'],
+    image: '/projects/havelock-island-beach-resort.jpg',
+    imageAlt:
+      'Havelock Island Beach Resort website showing an aerial view of the resort, pool and beach',
+    url: 'https://www.havelockislandbeachresort.com/',
+    status: 'Live',
+    featured: true,
+    summary:
+      'A booking-focused website for a beachfront resort in the Andaman Islands, with room search, packages and direct reservation paths.',
+    overview: [
+      'Havelock Island Beach Resort is a beach property in the Andaman and Nicobar Islands. Its website presents the resort, rooms and activities, and lets visitors check availability and plan a stay in one place.',
+      'The build puts the booking flow front and centre — availability search, packages and gallery content — with clear contact paths for guests and travel agents.',
+    ],
+    highlights: [
+      'Availability search with check-in, check-out and room selection',
+      'Resort packages and activities presented clearly',
+      'Separate paths for guests, agents and direct enquiries',
+    ],
+  },
+  {
+    slug: 'andaman-island',
+    name: 'Andaman Island',
+    industry: 'Travel & Tourism',
+    services: ['Website Development'],
+    image: '/projects/andaman-island.jpg',
+    imageAlt:
+      'Andaman Island tourism website hero presenting tour packages and island destinations',
+    url: 'https://www.andamanisland.in/',
+    status: 'Live',
+    featured: true,
+    summary:
+      'A tourism portal for the Andaman Islands covering tour packages, island destinations, activities and trip planning.',
+    overview: [
+      "Andaman Island brings the region's tours, islands, water sports and stay options into a single planning experience for travellers researching a trip.",
+      'The site is structured around how visitors actually plan — browsing destinations and packages first, then reaching a booking or enquiry conversation through clear contact and chat options.',
+    ],
+    highlights: [
+      'Tour packages and island destinations in one place',
+      'Activities, water sports and trip-planning content',
+      'Live chat and enquiry paths for booking assistance',
     ],
   },
 ];

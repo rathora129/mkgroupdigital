@@ -26,8 +26,8 @@ export async function generateMetadata({ params }) {
     description: project.summary,
     path: `/work/${project.slug}`,
     image,
-    imageWidth: isWide ? 1680 : 1188,
-    imageHeight: isWide ? 720 : 1258,
+    imageWidth: isWide ? 1680 : 1200,
+    imageHeight: isWide ? 720 : 900,
     imageAlt: project.imageAlt,
     type: 'article',
   });

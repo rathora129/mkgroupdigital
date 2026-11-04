@@ -22,7 +22,7 @@ import BrandLogo from '@/components/ui/BrandLogo';
 import Button from '@/components/ui/Button';
 import Icon from '@/components/ui/Icon';
 import AnnouncementBar from './AnnouncementBar';
-import services from '@/data/services';
+import { serviceCategories } from '@/data/services';
 import siteConfig from '@/data/site';
 import { media } from '@/styles/theme';
 
@@ -583,17 +583,17 @@ export default function Header() {
                       >
                         <MegaTop>
                           <span>Capabilities</span>
-                          <span>08 services</span>
+                          <span>04 categories</span>
                         </MegaTop>
                         <MegaGrid>
-                          {services.map((service) => (
+                          {serviceCategories.map((category) => (
                             <MegaLink
-                              key={service.slug}
-                              href={`/services/${service.slug}`}
+                              key={category.slug}
+                              href={`/services#${category.slug}`}
                               onClick={() => setServicesOpen(false)}
                             >
-                              <Icon name={service.icon} size={16} strokeWidth={1.6} />
-                              {service.title}
+                              <Icon name={category.icon} size={16} strokeWidth={1.6} />
+                              {category.title}
                             </MegaLink>
                           ))}
                         </MegaGrid>
@@ -684,16 +684,16 @@ export default function Header() {
               </MobileNav>
 
               <MobileServices>
-                <p>Services</p>
+                <p>Service categories</p>
                 <div>
-                  {services.map((service) => (
+                  {serviceCategories.map((category) => (
                     <Link
-                      key={service.slug}
-                      href={`/services/${service.slug}`}
+                      key={category.slug}
+                      href={`/services#${category.slug}`}
                       onClick={closeMobile}
                     >
-                      <Icon name={service.icon} size={14} strokeWidth={1.7} />
-                      {service.title}
+                      <Icon name={category.icon} size={14} strokeWidth={1.7} />
+                      {category.title}
                     </Link>
                   ))}
                 </div>

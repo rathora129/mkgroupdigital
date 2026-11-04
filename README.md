@@ -30,11 +30,12 @@ Copy `.env.example` to `.env.local` before wiring contact delivery. The site run
 
 | Route | Description |
 | --- | --- |
-| `/` | Homepage: hero, services, why choose us, featured work, process, industries, testimonials, FAQ, CTA |
-| `/services` | Services index |
+| `/` | Homepage: hero, service categories, business software, why choose us, featured work, process, industries, testimonials, FAQ, CTA |
+| `/services` | Services index — 4-category catalog with anchors plus engagement models and process |
 | `/services/[slug]` | 8 service detail pages (statically generated) |
-| `/work` | Work index |
-| `/work/[slug]` | 5 project detail pages (statically generated) |
+| `/pricing` | Indicative INR pricing for websites, business software and monthly marketing plans |
+| `/work` | Work index — 7 live projects with "Visit Live Website" links |
+| `/work/[slug]` | 7 project detail pages (statically generated) |
 | `/about` | About |
 | `/contact` | Contact form and direct channels |
 | `/privacy-policy` | Privacy Policy |
@@ -63,20 +64,25 @@ Editable content lives in `src/data/`. Business details, navigation, contact lin
 
 ## Contact form delivery
 
+A floating WhatsApp button (`src/components/layout/WhatsAppFloat.jsx`) renders on every page, bottom-right, linking to the prefilled `wa.me` chat. The contact page additionally shows an Instagram QR card (supplied artwork at `public/contact/mkgroupdigital-qr.png`, served unmodified) and a "Not sure what you need?" panel for early-stage enquiries.
+
 `POST /api/contact` accepts JSON:
 
 ```json
 {
   "fullName": "…",
-  "businessEmail": "…",
+  "email": "…",
   "phone": "…",
   "company": "…",
   "service": "…",
   "budget": "…",
+  "contactMethod": "WhatsApp | Email | Phone",
   "details": "…",
   "website": ""
 }
 ```
+
+Only `fullName`, `email`, `service`, `budget` and `contactMethod` are required; phone, company and details are optional. The service dropdown includes two guidance options for visitors who do not know what they need yet, and the budget dropdown always offers "Not sure yet".
 
 The route re-validates every field with the same Yup schema as the form, rejects the hidden `website` honeypot, caps bodies at 50 KB and never exposes credentials to the browser. Delivery priority:
 
@@ -99,9 +105,9 @@ Set these in the hosting provider's environment settings, not in the repository.
 
 ## Known placeholders
 
-- **Instagram** — `siteConfig.social.instagram` points at `https://www.instagram.com/` with `instagramPending: true` because the real handle was not supplied. Replace the URL in `src/data/site.js` and clear the flag once the account is confirmed.
-- **RootsEco** — the project is presented as a private build with no public URL (`url: null`), and the Work pages state that a preview is available on request. Its cover images were produced from the brand assets supplied for the project.
+- **Instagram** — `siteConfig.social.instagram` points at `https://www.instagram.com/` with `instagramPending: true` because the real handle was not supplied. Replace the URL in `src/data/site.js` and clear the flag once the account is confirmed. The QR artwork on the contact page is used exactly as supplied.
 - **Testimonials** — the homepage section uses clearly labelled sample copy, as specified. No client names, ratings, review schema or performance metrics are claimed anywhere on the site. Replace the samples in `src/components/sections/TestimonialsSection.jsx` only with approved real quotes.
+- **Pricing** — every price on `/pricing` is an indicative starting figure; the page states that final cost is confirmed in a written quote, that hosting/domain/third-party/ad spend are separate unless included, and that no leads, sales or advertising results are guaranteed.
 
 ## SEO and accessibility
 
@@ -114,7 +120,11 @@ Set these in the hosting provider's environment settings, not in the repository.
 ## Verification
 
 - `npm run lint` — clean.
-- `npm run build` — succeeds; 27 routes, with the 8 service and 5 project pages statically generated.
-- Responsive audit at 390 / 768 / 1440 across 12 routes — no horizontal overflow, no broken images, no client-side console errors.
+- `npm run build` — succeeds; 30 routes, with the 8 service and 7 project pages statically generated.
+- Responsive audit at 390 / 768 / 1440 across 6 routes — no horizontal overflow, no broken images.
+- All 7 portfolio URLs verified live; work cards link out with `target="_blank"` and `rel="noopener noreferrer"`.
+- Floating WhatsApp button verified on `/`, `/pricing`, `/work` and `/contact` with the prefilled `wa.me` link; contact page mailto/tel/WhatsApp links and the Instagram QR image verified in-browser.
+- Contact form — empty submit surfaces exactly the required-field errors; all 7 budget options, both guidance options and the 3 contact-method radios present; a valid submission reaches the API and shows the honest fallback when delivery is unconfigured.
+- Pricing — 11 plans, all "Get a Custom Quote" CTAs route to `/contact`.
 - Contact API — `422` with field errors on invalid input, `400` on the honeypot, `405` on GET, `503 NOT_CONFIGURED` without delivery configuration, success only after provider acceptance.
 - All public routes return `200`; unknown routes return `404`.

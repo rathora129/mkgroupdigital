@@ -1,5 +1,6 @@
 import Hero from '@/components/sections/Hero';
 import ServicesOverview from '@/components/sections/ServicesOverview';
+import BusinessSoftware from '@/components/sections/BusinessSoftware';
 import WhyChoose from '@/components/sections/WhyChoose';
 import FeaturedWork from '@/components/sections/FeaturedWork';
 import ProcessSection from '@/components/sections/ProcessSection';
@@ -28,6 +29,7 @@ export default function HomePage() {
     <>
       <Hero />
       <ServicesOverview />
+      <BusinessSoftware />
       <WhyChoose />
       <FeaturedWork />
       <ProcessSection />

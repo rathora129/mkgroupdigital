@@ -59,7 +59,7 @@ export default function FeaturedWork({ showHeaderLink = true }) {
                 Selected <em>Work.</em>
               </>
             }
-            description="A selection of live websites and platforms across e-commerce, education, interiors and technology."
+            description="A selection of live websites and platforms across e-commerce, education, interiors, hospitality, travel and technology."
             headingId="work-heading"
           />
           {showHeaderLink ? (

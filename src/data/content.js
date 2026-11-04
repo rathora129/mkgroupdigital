@@ -92,10 +92,13 @@ export const values = [
 ];
 
 export const budgetOptions = [
+  'Below ₹5,000',
+  '₹5,000 – ₹10,000',
+  '₹10,000 – ₹25,000',
+  '₹25,000 – ₹50,000',
+  '₹50,000 – ₹1,00,000',
+  'Above ₹1,00,000',
   'Not sure yet',
-  'Under ₹50,000',
-  '₹50,000 – ₹1,50,000',
-  '₹1,50,000 – ₹5,00,000',
-  '₹5,00,000+',
-  'International project',
 ];
+
+export const contactMethodOptions = ['WhatsApp', 'Email', 'Phone'];

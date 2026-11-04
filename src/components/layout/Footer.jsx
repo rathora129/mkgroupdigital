@@ -299,10 +299,11 @@ export default function Footer() {
             <Col>
               <ColTitle>Company</ColTitle>
               <FooterLink href="/">Home</FooterLink>
+              <FooterLink href="/services">Services</FooterLink>
+              <FooterLink href="/pricing">Pricing</FooterLink>
               <FooterLink href="/work">Work</FooterLink>
               <FooterLink href="/about">About</FooterLink>
               <FooterLink href="/contact">Contact</FooterLink>
-              <FooterLink href="/services">Services</FooterLink>
             </Col>
 
             <Col>

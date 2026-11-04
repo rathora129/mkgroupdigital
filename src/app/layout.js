@@ -3,6 +3,7 @@ import StyledComponentsRegistry from '@/lib/registry';
 import Providers from '@/components/layout/Providers';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import WhatsAppFloat from '@/components/layout/WhatsAppFloat';
 import siteConfig from '@/data/site';
 import { JsonLd, organizationSchema, websiteSchema } from '@/lib/schema';
 
@@ -91,6 +92,7 @@ export default function RootLayout({ children }) {
             <Header />
             <main id="main">{children}</main>
             <Footer />
+            <WhatsAppFloat />
             <div className="noise" aria-hidden="true" />
           </Providers>
         </StyledComponentsRegistry>

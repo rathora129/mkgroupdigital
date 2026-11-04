@@ -732,6 +732,95 @@ export const getServiceBySlug = (slug) =>
 export const getRelatedServices = (slugs = []) =>
   slugs.map((slug) => getServiceBySlug(slug)).filter(Boolean);
 
-export const serviceOptions = services.map(({ title }) => title);
+export const serviceCategories = [
+  {
+    slug: 'website-development',
+    title: 'Website Development',
+    icon: 'Code2',
+    short:
+      'Business websites, portfolios, landing pages, e-commerce stores and corporate sites — designed, built and optimised to turn visitors into enquiries.',
+    startingPrice: '₹5,000 onwards',
+    items: [
+      'Business Website',
+      'Portfolio Website',
+      'Landing Page',
+      'E-commerce Website',
+      'Corporate Website',
+      'Website Redesign',
+      'Custom Web Application',
+    ],
+    services: ['website-development', 'ecommerce-development'],
+  },
+  {
+    slug: 'custom-software',
+    title: 'Custom Software Development',
+    icon: 'Cpu',
+    short:
+      'Practical business software for shops, retail stores, distributors, wholesalers and small businesses — built around the way you already work.',
+    startingPrice: '₹25,000 onwards',
+    items: [
+      'Inventory Management Software',
+      'Stock Management System',
+      'Billing & Invoice Software',
+      'Employee Management System',
+      'Attendance Management',
+      'CRM Software',
+      'Customer Management',
+      'Sales & Lead Management',
+      'Admin Dashboard',
+      'Custom Business Automation',
+    ],
+    services: ['custom-web-applications'],
+  },
+  {
+    slug: 'digital-marketing',
+    title: 'Digital Marketing',
+    icon: 'Megaphone',
+    short:
+      'Google and Meta ads, SEO, social media management and lead generation campaigns — managed with clear, honest reporting. Advertising spend is separate from management fees.',
+    startingPrice: '₹5,000/month onwards',
+    items: [
+      'Google Ads Management',
+      'Meta Ads Management',
+      'Facebook & Instagram Advertising',
+      'SEO',
+      'Social Media Management',
+      'Lead Generation Campaigns',
+      'Landing Pages for Advertising',
+      'Marketing Analytics',
+    ],
+    services: ['digital-marketing', 'seo-organic-growth', 'social-media-management'],
+  },
+  {
+    slug: 'branding-creative',
+    title: 'Branding & Creative',
+    icon: 'Palette',
+    short:
+      'Logos, brand identity and the day-to-day creative assets that make your business look established everywhere it shows up.',
+    startingPrice: 'Custom quote',
+    items: [
+      'Logo Design',
+      'Brand Identity',
+      'Social Media Creatives',
+      'Business Profile Design',
+      'Brochure Design',
+      'Marketing Materials',
+    ],
+    services: ['branding-graphic-design', 'ui-ux-design'],
+  },
+];
+
+export const getCategoryBySlug = (slug) =>
+  serviceCategories.find((category) => category.slug === slug);
+
+export const guidanceOptions = [
+  'I am just starting my business and need guidance.',
+  "I have an idea but don't know what solution I need.",
+];
+
+export const serviceOptions = [
+  ...services.map(({ title }) => title),
+  ...guidanceOptions,
+];
 
 export default services;

@@ -16,12 +16,13 @@ function escapeHtml(value = '') {
 function leadRows(data) {
   return [
     ['Full name', data.fullName],
-    ['Business email', data.businessEmail],
-    ['Phone', data.phone],
-    ['Company', data.company || 'Not provided'],
+    ['Email', data.email],
+    ['Phone / WhatsApp', data.phone || 'Not provided'],
+    ['Company / business', data.company || 'Not provided'],
     ['Service', data.service],
-    ['Budget', data.budget],
-    ['Project details', data.details],
+    ['Estimated budget', data.budget],
+    ['Preferred contact', data.contactMethod],
+    ['Project details', data.details || 'Not provided'],
   ];
 }
 
@@ -56,7 +57,7 @@ async function sendViaResend(data) {
     body: JSON.stringify({
       from: process.env.CONTACT_FROM_EMAIL,
       to: [process.env.CONTACT_TO_EMAIL || siteConfig.email],
-      reply_to: data.businessEmail,
+      reply_to: data.email,
       subject: `New enquiry — ${data.service} · ${
         data.company || data.fullName
       }`,

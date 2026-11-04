@@ -16,7 +16,7 @@ import styled from 'styled-components';
 import Button from '@/components/ui/Button';
 import { contactSchema, initialContactValues } from '@/lib/contactSchema';
 import { serviceOptions } from '@/data/services';
-import { budgetOptions } from '@/data/content';
+import { budgetOptions, contactMethodOptions } from '@/data/content';
 import siteConfig from '@/data/site';
 import { media } from '@/styles/theme';
 
@@ -135,6 +135,55 @@ const ErrorText = styled.p`
   font-size: 0.72rem;
   line-height: 1.45;
   color: ${({ theme }) => theme.colors.danger};
+`;
+
+const MethodGroup = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+`;
+
+const Method = styled.label`
+  position: relative;
+  cursor: pointer;
+
+  input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0.6rem 0.8rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.025);
+    color: ${({ theme }) => theme.colors.textSoft};
+    font-size: 0.86rem;
+    transition:
+      border-color 0.25s ease,
+      background 0.25s ease,
+      color 0.25s ease;
+  }
+
+  &:hover span {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+
+  input:checked + span {
+    border-color: rgba(124, 92, 255, 0.55);
+    background: rgba(124, 92, 255, 0.1);
+    color: ${({ theme }) => theme.colors.text};
+  }
+
+  input:focus-visible + span {
+    outline: 2px solid rgba(124, 92, 255, 0.6);
+    outline-offset: 2px;
+  }
 `;
 
 const Counter = styled.span`
@@ -415,32 +464,30 @@ export default function ContactForm() {
               </Field>
 
               <Field>
-                <Label htmlFor="businessEmail">Business email</Label>
+                <Label htmlFor="email">Email address</Label>
                 <Input
-                  id="businessEmail"
-                  name="businessEmail"
+                  id="email"
+                  name="email"
                   type="email"
                   inputMode="email"
                   autoComplete="email"
-                  placeholder="you@company.com"
-                  value={values.businessEmail}
+                  placeholder="you@gmail.com"
+                  value={values.email}
                   onChange={handleChange}
                   onBlur={handleBlur}
-                  aria-invalid={Boolean(errorFor('businessEmail'))}
-                  aria-describedby={
-                    errorFor('businessEmail') ? 'businessEmail-error' : undefined
-                  }
-                  $error={Boolean(errorFor('businessEmail'))}
+                  aria-invalid={Boolean(errorFor('email'))}
+                  aria-describedby={errorFor('email') ? 'email-error' : undefined}
+                  $error={Boolean(errorFor('email'))}
                 />
-                {errorFor('businessEmail') ? (
-                  <ErrorText id="businessEmail-error">
-                    {errorFor('businessEmail')}
-                  </ErrorText>
+                {errorFor('email') ? (
+                  <ErrorText id="email-error">{errorFor('email')}</ErrorText>
                 ) : null}
               </Field>
 
               <Field>
-                <Label htmlFor="phone">Phone</Label>
+                <Label htmlFor="phone">
+                  Phone / WhatsApp <span>Optional</span>
+                </Label>
                 <Input
                   id="phone"
                   name="phone"
@@ -460,16 +507,16 @@ export default function ContactForm() {
                 ) : null}
               </Field>
 
-              <Field>
+              <Field $full>
                 <Label htmlFor="company">
-                  Company <span>Optional</span>
+                  Company / business name <span>Optional</span>
                 </Label>
                 <Input
                   id="company"
                   name="company"
                   type="text"
                   autoComplete="organization"
-                  placeholder="Company or brand"
+                  placeholder="Leave blank if you have not registered one yet"
                   value={values.company}
                   onChange={handleChange}
                   onBlur={handleBlur}
@@ -497,7 +544,7 @@ export default function ContactForm() {
                     }
                     $error={Boolean(errorFor('service'))}
                   >
-                    <option value="">Select a service</option>
+                    <option value="">Select the closest option</option>
                     {serviceOptions.map((service) => (
                       <option key={service} value={service}>
                         {service}
@@ -512,7 +559,7 @@ export default function ContactForm() {
               </Field>
 
               <Field>
-                <Label htmlFor="budget">Project budget</Label>
+                <Label htmlFor="budget">Estimated budget</Label>
                 <SelectWrap>
                   <Select
                     id="budget"
@@ -542,12 +589,15 @@ export default function ContactForm() {
 
               <Field $full>
                 <Label htmlFor="details">
-                  Project details <span>{values.details.length}/5000</span>
+                  Project details{' '}
+                  <span>
+                    Optional · {values.details.length}/5000
+                  </span>
                 </Label>
                 <Textarea
                   id="details"
                   name="details"
-                  placeholder="What are you building, who is it for and what does success look like? Links to existing work are welcome."
+                  placeholder="What are you building, who is it for and what does success look like? Even two or three sentences help. Links to existing work are welcome."
                   value={values.details}
                   onChange={handleChange}
                   onBlur={handleBlur}
@@ -560,6 +610,30 @@ export default function ContactForm() {
                 ) : (
                   <Counter>Brief, clear and as specific as you can be.</Counter>
                 )}
+              </Field>
+
+              <Field $full>
+                <Label id="contact-method-label">Preferred contact method</Label>
+                <MethodGroup role="radiogroup" aria-labelledby="contact-method-label">
+                  {contactMethodOptions.map((method) => (
+                    <Method key={method}>
+                      <input
+                        type="radio"
+                        name="contactMethod"
+                        value={method}
+                        checked={values.contactMethod === method}
+                        onChange={handleChange}
+                        onBlur={handleBlur}
+                      />
+                      <span>{method}</span>
+                    </Method>
+                  ))}
+                </MethodGroup>
+                {errorFor('contactMethod') ? (
+                  <ErrorText id="contactMethod-error">
+                    {errorFor('contactMethod')}
+                  </ErrorText>
+                ) : null}
               </Field>
             </Grid>
 

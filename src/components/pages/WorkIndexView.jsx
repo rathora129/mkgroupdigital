@@ -1,7 +1,7 @@
 'use client';
 
 import styled from 'styled-components';
-import { MessageCircle, Sparkles } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import PageHero from '@/components/sections/PageHero';
 import Section from '@/components/ui/Section';
 import Container from '@/components/ui/Container';
@@ -80,43 +80,22 @@ const Grid = styled.div`
   }
 `;
 
-const Note = styled.div`
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  margin-top: 1.5rem;
-  padding: 1rem 1.15rem;
-  border-radius: ${({ theme }) => theme.radius.sm};
-  border: 1px solid ${({ theme }) => theme.colors.line};
-  background: rgba(255, 255, 255, 0.02);
-  font-size: 0.82rem;
-  line-height: 1.6;
-  color: ${({ theme }) => theme.colors.muted};
-
-  svg {
-    margin-top: 0.15rem;
-    flex-shrink: 0;
-    color: ${({ theme }) => theme.colors.violetSoft};
-  }
-`;
-
 export default function WorkIndexView() {
-  const liveCount = projects.filter((project) => project.status === 'Live').length;
   const industries = new Set(projects.map((project) => project.industry)).size;
 
   return (
     <>
       <PageHero
         breadcrumb={[{ name: 'Home', path: '/' }, { name: 'Work' }]}
-        eyebrow="Selected work"
+        eyebrow="Selected Work"
         title={
           <>
-            Work that earns
+            Real projects.
             <br />
-            its <em>keep.</em>
+            Live <em>experiences.</em>
           </>
         }
-        description="A selection of websites and platforms built for businesses across e-commerce, education, interiors and technology — in India and abroad."
+        description="Digital solutions built for businesses — live websites across e-commerce, education, interiors, hospitality, travel and technology, in India and abroad."
         actions={
           <>
             <Button href="/contact" size="lg">
@@ -139,7 +118,7 @@ export default function WorkIndexView() {
             <Stats>
               <Stat>
                 <strong>{String(projects.length).padStart(2, '0')}</strong>
-                <span>Selected projects</span>
+                <span>Live projects</span>
               </Stat>
               <Stat>
                 <strong>{String(industries).padStart(2, '0')}</strong>
@@ -147,8 +126,8 @@ export default function WorkIndexView() {
               </Stat>
             </Stats>
             <StatsNote>
-              {liveCount} live projects and one private build. Every project shown
-              here belongs to a real business.
+              Every project shown here is live and belongs to a real business.
+              Visit any of them to see the work in action.
             </StatsNote>
           </StatsPanel>
         }
@@ -157,10 +136,10 @@ export default function WorkIndexView() {
       <Section aria-labelledby="portfolio-heading">
         <Container $width="wide">
           <SectionHeading
-            eyebrow="Portfolio"
+            eyebrow="Selected Work"
             title={
               <>
-                Built for real <em>businesses.</em>
+                Digital solutions built for <em>businesses.</em>
               </>
             }
             description="Each project started with a specific problem. These are the solutions that went live."
@@ -182,12 +161,6 @@ export default function WorkIndexView() {
               );
             })}
           </Grid>
-
-          <Note>
-            <Sparkles size={16} />
-            Some builds are private by agreement. Live links are included only
-            where the project is publicly accessible.
-          </Note>
         </Container>
       </Section>
 

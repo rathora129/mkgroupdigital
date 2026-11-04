@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import {
   ArrowUpRight,
   Clock3,
@@ -15,6 +16,7 @@ import Container from '@/components/ui/Container';
 import SectionHeading from '@/components/ui/SectionHeading';
 import Reveal from '@/components/ui/Reveal';
 import Accordion from '@/components/ui/Accordion';
+import Button from '@/components/ui/Button';
 import ContactForm from '@/components/contact/ContactForm';
 import { faqs } from '@/data/faqs';
 import siteConfig from '@/data/site';
@@ -231,6 +233,124 @@ const DirectLine = styled.div`
   }
 `;
 
+const IgCard = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.9rem;
+  padding: 1.5rem;
+  border-radius: ${({ theme }) => theme.radius.lg};
+  border: 1px solid rgba(214, 51, 132, 0.28);
+  background:
+    radial-gradient(320px circle at 100% 0%, rgba(214, 51, 132, 0.16), transparent 65%),
+    radial-gradient(260px circle at 0% 100%, rgba(124, 92, 255, 0.12), transparent 60%),
+    ${({ theme }) => theme.colors.bgSoft};
+`;
+
+const IgQr = styled.div`
+  position: relative;
+  width: min(188px, 60%);
+  aspect-ratio: 2350 / 2700;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #fff;
+  box-shadow: 0 18px 40px -22px rgba(214, 51, 132, 0.55);
+
+  img {
+    object-fit: cover;
+  }
+`;
+
+const IgTitle = styled.h3`
+  font-size: 1.12rem;
+  letter-spacing: -0.02em;
+`;
+
+const IgCopy = styled.p`
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: ${({ theme }) => theme.colors.muted};
+`;
+
+const IgScan = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: ${({ theme }) => theme.colors.violetSoft};
+`;
+
+const Unsure = styled.div`
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  align-items: center;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  padding: clamp(1.75rem, 4vw, 3rem);
+  border-radius: ${({ theme }) => theme.radius.xl};
+  border: 1px solid ${({ theme }) => theme.colors.lineStrong};
+  background:
+    radial-gradient(560px circle at 100% 0%, rgba(124, 92, 255, 0.14), transparent 60%),
+    ${({ theme }) => theme.colors.card};
+
+  ${media.down('md')} {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const UnsureCopy = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+
+  h2 {
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+    letter-spacing: -0.035em;
+  }
+
+  p {
+    max-width: 520px;
+    font-size: 0.94rem;
+    line-height: 1.7;
+    color: ${({ theme }) => theme.colors.muted};
+  }
+`;
+
+const UnsureActions = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-end;
+
+  ${media.down('md')} {
+    justify-content: flex-start;
+  }
+`;
+
+function InstagramGlyph({ size = 18 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.2" cy="6.8" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 const faqItems = [faqs[1], faqs[2], faqs[6]];
 
 export default function ContactView() {
@@ -270,9 +390,9 @@ export default function ContactView() {
                   <Eyebrow>Project enquiry</Eyebrow>
                   <PanelTitle id="enquiry-heading">Start a conversation.</PanelTitle>
                   <PanelText>
-                    The more context you share, the more useful our first reply
-                    will be. If you are unsure about scope or budget, choose the
-                    closest option and we will work it out together.
+                    Only your name and email are required — everything else can
+                    wait until we talk. If you are unsure about scope or budget,
+                    choose the closest option and we will work it out together.
                   </PanelText>
                 </PanelHead>
                 <ContactForm />
@@ -293,6 +413,19 @@ export default function ContactView() {
 
               <Card>
                 <CardHead>
+                  <Mail size={16} />
+                  <span>Personal email</span>
+                </CardHead>
+                <CardLink href={`mailto:${siteConfig.personalEmail}`}>
+                  {siteConfig.personalEmail} <ArrowUpRight size={14} />
+                </CardLink>
+                <CardNote>
+                  Prefer Gmail? This reaches the same team directly.
+                </CardNote>
+              </Card>
+
+              <Card>
+                <CardHead>
                   <MessageCircle size={16} />
                   <span>WhatsApp</span>
                 </CardHead>
@@ -304,6 +437,15 @@ export default function ContactView() {
                   {siteConfig.phone} <ArrowUpRight size={14} />
                 </CardLink>
                 <CardNote>Usually the fastest way to reach us.</CardNote>
+                <Button
+                  href={siteConfig.whatsappUrl}
+                  external
+                  size="sm"
+                  icon={<MessageCircle size={15} strokeWidth={1.8} />}
+                  arrow={false}
+                >
+                  Chat on WhatsApp
+                </Button>
               </Card>
 
               <Card>
@@ -314,6 +456,36 @@ export default function ContactView() {
                 <CardLink href={siteConfig.phoneHref}>{siteConfig.phone}</CardLink>
                 <CardNote>Call us directly for a quick conversation.</CardNote>
               </Card>
+
+              <IgCard>
+                <IgTitle>Connect with us on Instagram</IgTitle>
+                <IgQr>
+                  <Image
+                    src={siteConfig.social.instagramQr}
+                    alt="MK Group Digital Instagram QR code — scan to open our Instagram profile"
+                    fill
+                    sizes="190px"
+                  />
+                </IgQr>
+                <IgScan>
+                  <InstagramGlyph size={13} /> Scan to Connect
+                </IgScan>
+                <IgCopy>
+                  Scan the QR code to explore our Instagram and connect with MK
+                  Group Digital.
+                </IgCopy>
+                <Button
+                  href={siteConfig.social.instagram}
+                  external
+                  variant="secondary"
+                  size="sm"
+                  icon={<InstagramGlyph size={15} />}
+                  arrow={false}
+                  aria-label="Open MK Group Digital on Instagram"
+                >
+                  Open Instagram
+                </Button>
+              </IgCard>
 
               <Card>
                 <CardHead>
@@ -350,6 +522,41 @@ export default function ContactView() {
               </Next>
             </Rail>
           </Grid>
+        </Container>
+      </Section>
+
+      <Section $compact aria-labelledby="unsure-heading">
+        <Container>
+          <Reveal y={18}>
+            <Unsure>
+              <UnsureCopy>
+                <Eyebrow>No brief? No problem.</Eyebrow>
+                <h2 id="unsure-heading">
+                  Not sure what you need? <em>Let&apos;s discuss your idea.</em>
+                </h2>
+                <p>
+                  You do not need a domain, a registered company or a fixed
+                  budget to start. Bring the idea — even a rough one — and we
+                  will help you work out what the right first step looks like.
+                </p>
+              </UnsureCopy>
+              <UnsureActions>
+                <Button href="/contact#enquiry" size="lg">
+                  Start the conversation
+                </Button>
+                <Button
+                  href={siteConfig.whatsappUrl}
+                  external
+                  variant="secondary"
+                  size="lg"
+                  icon={<MessageCircle size={17} strokeWidth={1.8} />}
+                  arrow={false}
+                >
+                  Chat on WhatsApp
+                </Button>
+              </UnsureActions>
+            </Unsure>
+          </Reveal>
         </Container>
       </Section>
 
