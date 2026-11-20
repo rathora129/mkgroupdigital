@@ -2,9 +2,9 @@
 
 import {
   BarChart3,
-  Boxes,
   FileText,
   MessageCircle,
+  PanelsTopLeft,
   Users,
   Warehouse,
 } from 'lucide-react';
@@ -14,47 +14,18 @@ import Section from '@/components/ui/Section';
 import SectionHeading from '@/components/ui/SectionHeading';
 import Reveal from '@/components/ui/Reveal';
 import Button from '@/components/ui/Button';
+import { softwareSolutions } from '@/data/content';
 import siteConfig from '@/data/site';
 import { media } from '@/styles/theme';
 
-const examples = [
-  {
-    icon: Warehouse,
-    title: 'Retail Inventory Management',
-    description:
-      'Track stock levels, categories and reorder points across a single shop or multiple locations.',
-  },
-  {
-    icon: Boxes,
-    title: 'Stock & Purchase Management',
-    description:
-      'Record purchases, manage suppliers and know exactly what is coming in and going out.',
-  },
-  {
-    icon: Users,
-    title: 'Employee Management',
-    description:
-      'Staff records, roles and attendance in one place — without spreadsheets and registers.',
-  },
-  {
-    icon: FileText,
-    title: 'Billing & Invoicing',
-    description:
-      'Create invoices, track payments and keep clean records for every sale you make.',
-  },
-  {
-    icon: MessageCircle,
-    title: 'CRM & Lead Management',
-    description:
-      'Capture enquiries, follow up on time and see every customer conversation in one view.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Business Analytics Dashboard',
-    description:
-      'Sales, stock and performance numbers summarised in a dashboard you actually check.',
-  },
-];
+const icons = {
+  MessageCircle,
+  Warehouse,
+  FileText,
+  Users,
+  BarChart3,
+  PanelsTopLeft,
+};
 
 const Grid = styled.div`
   display: grid;
@@ -122,20 +93,23 @@ export default function BusinessSoftware() {
               Smart Software for <em>Everyday Business Operations.</em>
             </>
           }
-          description="We build practical business software that helps shops and growing businesses manage inventory, stock, billing, employees, customers and daily operations from one place."
+          description="Most growing businesses outgrow notebooks, registers and disconnected spreadsheets. We build practical software for CRM and lead follow-up, inventory and stock, billing, employees and daily operations — so information lives in one system instead of five places."
           headingId="software-heading"
         />
 
         <Grid>
-          {examples.map((example, index) => (
-            <Reveal key={example.title} delay={(index % 3) * 0.06} y={18}>
-              <Card>
-                <example.icon size={20} strokeWidth={1.7} />
-                <h3>{example.title}</h3>
-                <p>{example.description}</p>
-              </Card>
-            </Reveal>
-          ))}
+          {softwareSolutions.map((solution, index) => {
+            const SolutionIcon = icons[solution.icon] || PanelsTopLeft;
+            return (
+              <Reveal key={solution.title} delay={(index % 3) * 0.06} y={18}>
+                <Card>
+                  <SolutionIcon size={20} strokeWidth={1.7} />
+                  <h3>{solution.title}</h3>
+                  <p>{solution.description}</p>
+                </Card>
+              </Reveal>
+            );
+          })}
         </Grid>
 
         <Actions>

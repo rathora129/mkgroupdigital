@@ -8,6 +8,7 @@ export default function sitemap() {
   const staticRoutes = [
     { path: '/', priority: 1, changeFrequency: 'monthly' },
     { path: '/services', priority: 0.9, changeFrequency: 'monthly' },
+    { path: '/industries', priority: 0.8, changeFrequency: 'monthly' },
     { path: '/pricing', priority: 0.9, changeFrequency: 'monthly' },
     { path: '/work', priority: 0.9, changeFrequency: 'monthly' },
     { path: '/about', priority: 0.7, changeFrequency: 'yearly' },

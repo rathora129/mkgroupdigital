@@ -25,6 +25,21 @@ export const faqs = [
       'Yes. We offer ongoing maintenance and support for updates, fixes and improvements, either as a retainer or on an as-needed basis, including for websites we did not originally build.',
   },
   {
+    question: 'Can you build custom software for my business?',
+    answer:
+      'Yes. We build CRM, inventory, billing, employee management, institute management and other business applications around your actual workflow. We start by mapping the process and the problem, then propose the smallest system that solves it — with an indicative starting price of ₹25,000 for basic software.',
+  },
+  {
+    question: 'Do you provide IT support after launch?',
+    answer:
+      'Yes. Software maintenance, technical support, API integrations and deployment support are part of our IT and technical services. Support can be arranged as a fixed monthly plan or on an as-needed basis, and we document what is covered before work begins.',
+  },
+  {
+    question: 'Do you build WordPress websites?',
+    answer:
+      'Yes, when WordPress is the right fit for how a site will be managed. For content-heavy business sites it can be a practical choice; for heavily customised or performance-critical builds we will recommend the approach that serves the project better.',
+  },
+  {
     question: 'Can you redesign an existing website?',
     answer:
       'Yes. We start by reviewing what is already working — content, structure, search visibility and analytics — then redesign around your goals while protecting the parts that should not be lost. Redirects and SEO considerations are handled as part of the process.',

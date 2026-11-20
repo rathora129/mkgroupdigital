@@ -29,6 +29,8 @@ import {
   LayoutGrid,
   LineChart,
   Layers,
+  Store,
+  Factory,
 } from 'lucide-react';
 
 const icons = {
@@ -60,6 +62,8 @@ const icons = {
   LayoutGrid,
   LineChart,
   Layers,
+  Store,
+  Factory,
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 1.7, ...rest }) {

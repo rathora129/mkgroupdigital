@@ -167,13 +167,13 @@ export default function WhyChoose() {
         <Layout>
           <Left>
             <SectionHeading
-              eyebrow="Why MK Group Digital"
+              eyebrow="Why choose MK Group Digital"
               title={
                 <>
-                  Your Digital <em>Growth Partner.</em>
+                  Why Choose <em>Us.</em>
                 </>
               }
-              description="We combine strategic thinking, distinctive design and dependable engineering — so the work does more than look good."
+              description="Six things we hold to on every project — whether it is a first website, a business system or an ongoing marketing partnership."
               headingId="why-heading"
             />
             <Principles>

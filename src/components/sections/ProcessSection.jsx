@@ -11,9 +11,14 @@ import { media } from '@/styles/theme';
 const Steps = styled.div`
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1.25rem;
   margin-top: clamp(2.75rem, 5vw, 4rem);
+
+  ${media.down('lg')} {
+    grid-template-columns: repeat(3, 1fr);
+    row-gap: 2.25rem;
+  }
 
   ${media.down('md')} {
     grid-template-columns: 1fr;
@@ -36,7 +41,12 @@ const Connector = styled.div`
     rgba(77, 141, 255, 0.05)
   );
 
+  ${media.down('lg')} {
+    display: none;
+  }
+
   ${media.down('md')} {
+    display: block;
     top: 6px;
     bottom: 6px;
     left: 4px;

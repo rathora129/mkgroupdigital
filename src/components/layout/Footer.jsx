@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import styled from 'styled-components';
 import BrandLogo from '@/components/ui/BrandLogo';
-import services from '@/data/services';
+import { serviceCategories } from '@/data/services';
 import siteConfig from '@/data/site';
 import { media } from '@/styles/theme';
 
@@ -108,7 +108,7 @@ const Social = styled.a`
 
 const Cols = styled.div`
   display: grid;
-  grid-template-columns: 0.8fr 1.15fr 1.2fr;
+  grid-template-columns: 0.75fr 1.35fr 1.05fr;
   gap: 2rem;
 
   ${media.down('sm')} {
@@ -279,8 +279,9 @@ export default function Footer() {
           <Brand>
             <BrandLogo size="lg" />
             <Description>
-              A full-service digital agency building websites, brands and growth
-              systems for ambitious businesses in India and worldwide.
+              A full-service IT, software development and digital solutions
+              company building websites, applications and growth systems for
+              startups, small businesses and enterprises in India and worldwide.
             </Description>
             <Availability>{siteConfig.availability}</Availability>
             <Social
@@ -299,21 +300,22 @@ export default function Footer() {
             <Col>
               <ColTitle>Company</ColTitle>
               <FooterLink href="/">Home</FooterLink>
+              <FooterLink href="/about">About Us</FooterLink>
               <FooterLink href="/services">Services</FooterLink>
+              <FooterLink href="/industries">Industries</FooterLink>
+              <FooterLink href="/work">Our Work</FooterLink>
               <FooterLink href="/pricing">Pricing</FooterLink>
-              <FooterLink href="/work">Work</FooterLink>
-              <FooterLink href="/about">About</FooterLink>
-              <FooterLink href="/contact">Contact</FooterLink>
+              <FooterLink href="/contact">Contact Us</FooterLink>
             </Col>
 
             <Col>
               <ColTitle>Services</ColTitle>
-              {services.slice(0, 6).map((service) => (
+              {serviceCategories.map((category) => (
                 <FooterLink
-                  key={service.slug}
-                  href={`/services/${service.slug}`}
+                  key={category.slug}
+                  href={`/services#${category.slug}`}
                 >
-                  {service.title}
+                  {category.title}
                 </FooterLink>
               ))}
               <FooterLink href="/services">

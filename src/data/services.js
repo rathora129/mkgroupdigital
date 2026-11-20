@@ -735,40 +735,40 @@ export const getRelatedServices = (slugs = []) =>
 export const serviceCategories = [
   {
     slug: 'website-development',
-    title: 'Website Development',
+    title: 'Website & E-commerce Development',
     icon: 'Code2',
     short:
-      'Business websites, portfolios, landing pages, e-commerce stores and corporate sites — designed, built and optimised to turn visitors into enquiries.',
+      'Business and corporate websites, e-commerce stores, landing pages, redesigns and WordPress builds — designed, developed and maintained to turn visitors into enquiries.',
     startingPrice: '₹5,000 onwards',
     items: [
-      'Business Website',
-      'Portfolio Website',
-      'Landing Page',
-      'E-commerce Website',
-      'Corporate Website',
+      'Business Website Development',
+      'Corporate Website Development',
+      'E-commerce Website Development',
+      'Landing Pages',
       'Website Redesign',
-      'Custom Web Application',
+      'WordPress Development',
+      'Website Maintenance',
     ],
     services: ['website-development', 'ecommerce-development'],
   },
   {
-    slug: 'custom-software',
-    title: 'Custom Software Development',
+    slug: 'software-development',
+    title: 'Software & Application Development',
     icon: 'Cpu',
     short:
-      'Practical business software for shops, retail stores, distributors, wholesalers and small businesses — built around the way you already work.',
+      'Custom software built around how your business actually works — CRM, ERP, inventory, billing, institute management, HR, automation, web apps and mobile apps.',
     startingPrice: '₹25,000 onwards',
     items: [
+      'Custom Software Development',
+      'CRM Development',
+      'ERP Solutions',
       'Inventory Management Software',
-      'Stock Management System',
-      'Billing & Invoice Software',
-      'Employee Management System',
-      'Attendance Management',
-      'CRM Software',
-      'Customer Management',
-      'Sales & Lead Management',
-      'Admin Dashboard',
-      'Custom Business Automation',
+      'Billing & Invoicing Software',
+      'School / Institute Management Software',
+      'HR & Employee Management',
+      'Business Automation',
+      'Web Application Development',
+      'Mobile App Development',
     ],
     services: ['custom-web-applications'],
   },
@@ -777,50 +777,57 @@ export const serviceCategories = [
     title: 'Digital Marketing',
     icon: 'Megaphone',
     short:
-      'Google and Meta ads, SEO, social media management and lead generation campaigns — managed with clear, honest reporting. Advertising spend is separate from management fees.',
+      'SEO, local SEO, Google and Meta ads, social media, lead generation, performance and content marketing — managed with clear, honest reporting. Advertising spend is separate from management fees.',
     startingPrice: '₹5,000/month onwards',
     items: [
-      'Google Ads Management',
-      'Meta Ads Management',
-      'Facebook & Instagram Advertising',
-      'SEO',
-      'Social Media Management',
-      'Lead Generation Campaigns',
-      'Landing Pages for Advertising',
-      'Marketing Analytics',
+      'Search Engine Optimization (SEO)',
+      'Local SEO',
+      'Google Ads',
+      'Meta Ads',
+      'Social Media Marketing',
+      'Lead Generation',
+      'Performance Marketing',
+      'Content Marketing',
     ],
     services: ['digital-marketing', 'seo-organic-growth', 'social-media-management'],
   },
   {
-    slug: 'branding-creative',
-    title: 'Branding & Creative',
+    slug: 'creative-branding',
+    title: 'Creative & Branding',
     icon: 'Palette',
     short:
-      'Logos, brand identity and the day-to-day creative assets that make your business look established everywhere it shows up.',
+      'Logos, brand identity, graphic design, social creatives, video editing and UI/UX — the visual language that makes your business look established everywhere it shows up.',
     startingPrice: 'Custom quote',
     items: [
       'Logo Design',
       'Brand Identity',
+      'Graphic Designing',
       'Social Media Creatives',
-      'Business Profile Design',
-      'Brochure Design',
-      'Marketing Materials',
+      'Video Editing',
+      'UI/UX Design',
     ],
     services: ['branding-graphic-design', 'ui-ux-design'],
+  },
+  {
+    slug: 'it-technical-services',
+    title: 'IT & Technical Services',
+    icon: 'ShieldCheck',
+    short:
+      'Practical technical support for the systems your business runs on — consulting, support, maintenance, API integration, cloud deployment and infrastructure guidance.',
+    startingPrice: 'Custom quote',
+    items: [
+      'IT Consulting',
+      'Technical Support',
+      'Software Maintenance',
+      'API Integration',
+      'Cloud & Deployment Support',
+      'Network / Infrastructure Solutions',
+    ],
+    services: [],
   },
 ];
 
 export const getCategoryBySlug = (slug) =>
   serviceCategories.find((category) => category.slug === slug);
-
-export const guidanceOptions = [
-  'I am just starting my business and need guidance.',
-  "I have an idea but don't know what solution I need.",
-];
-
-export const serviceOptions = [
-  ...services.map(({ title }) => title),
-  ...guidanceOptions,
-];
 
 export default services;

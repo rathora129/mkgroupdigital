@@ -390,8 +390,10 @@ export default function ContactView() {
                   <Eyebrow>Project enquiry</Eyebrow>
                   <PanelTitle id="enquiry-heading">Start a conversation.</PanelTitle>
                   <PanelText>
-                    Only your name and email are required — everything else can
-                    wait until we talk. If you are unsure about scope or budget,
+                    Your name, mobile number and a short description are all
+                    that is required — fill in the rest if you can. When you
+                    submit, WhatsApp opens with every detail prepared so you can
+                    send it in one tap. If you are unsure about scope or budget,
                     choose the closest option and we will work it out together.
                   </PanelText>
                 </PanelHead>

@@ -8,6 +8,7 @@ import Section from '@/components/ui/Section';
 import Button from '@/components/ui/Button';
 import Reveal from '@/components/ui/Reveal';
 import siteConfig from '@/data/site';
+import { cta } from '@/data/home';
 import { media } from '@/styles/theme';
 
 const Panel = styled.div`
@@ -168,15 +169,16 @@ const Micro = styled.div`
 `;
 
 export default function CtaSection({
-  eyebrow = "Let's work together",
+  eyebrow = cta.eyebrow,
   title = (
     <>
-      Ready to Build Something <em>Exceptional?</em>
+      {cta.titleLead} <em>{cta.titleAccent}</em>
     </>
   ),
-  description = "Let's turn your ideas into a digital experience that moves your business forward.",
-  primaryLabel = 'Start Your Project',
-  primaryHref = '/contact',
+  description = cta.description,
+  primaryLabel = cta.primaryLabel,
+  primaryHref = cta.primaryHref,
+  whatsappLabel = 'WhatsApp Us',
 }) {
   return (
     <Section $compact id="contact-cta">
@@ -208,7 +210,7 @@ export default function CtaSection({
                 icon={<MessageCircle size={17} strokeWidth={1.8} />}
                 arrow={false}
               >
-                Chat on WhatsApp
+                {whatsappLabel}
               </Button>
             </Actions>
             <Micro>

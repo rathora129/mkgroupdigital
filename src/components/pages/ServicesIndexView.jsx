@@ -71,6 +71,7 @@ const Category = styled.article`
   flex-direction: column;
   gap: 1.1rem;
   padding: clamp(1.5rem, 3vw, 2.1rem);
+  scroll-margin-top: 120px;
   border-radius: ${({ theme }) => theme.radius.lg};
   border: 1px solid ${({ theme }) => theme.colors.line};
   background: ${({ theme }) => theme.gradients.card};
@@ -78,9 +79,19 @@ const Category = styled.article`
     transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
     border-color 0.35s ease;
 
+  &:last-child {
+    grid-column: 1 / -1;
+  }
+
   &:hover {
     transform: translateY(-4px);
     border-color: ${({ theme }) => theme.colors.violetLine};
+  }
+
+  ${media.down('md')} {
+    &:last-child {
+      grid-column: auto;
+    }
   }
 `;
 
@@ -274,7 +285,7 @@ export default function ServicesIndexView() {
             needs to <em>grow.</em>
           </>
         }
-        description="Websites, custom business software, digital marketing and branding — a complete digital solutions agency under one roof."
+        description="Websites, e-commerce, custom software, IT support, digital marketing and creative — complete technology and digital solutions from one partner."
         actions={
           <>
             <Button href="/contact" size="lg">
@@ -288,7 +299,7 @@ export default function ServicesIndexView() {
               icon={<MessageCircle size={17} strokeWidth={1.8} />}
               arrow={false}
             >
-              Chat on WhatsApp
+              WhatsApp Us
             </Button>
           </>
         }
@@ -310,10 +321,10 @@ export default function ServicesIndexView() {
             eyebrow="Full service catalog"
             title={
               <>
-                Four capabilities. <em>One connected team.</em>
+                Five capabilities. <em>One connected partner.</em>
               </>
             }
-            description="Every category below is delivered by the same team, so strategy, design, build and growth stay connected from day one. Prices shown are indicative starting points."
+            description="Every category is planned and delivered by MK Group Digital, so strategy, design, build and growth stay connected from day one. Prices shown are indicative starting points."
             headingId="catalog-heading"
           />
 

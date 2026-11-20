@@ -3,6 +3,7 @@
 import styled from 'styled-components';
 import { Quote } from 'lucide-react';
 import Button from './Button';
+import { testimonialCopy } from '@/data/testimonials';
 import { media } from '@/styles/theme';
 
 const Shell = styled.div`
@@ -183,16 +184,12 @@ export default function Testimonials({ items = [] }) {
         <QuoteMark aria-hidden="true">
           <Quote size={20} strokeWidth={1.7} />
         </QuoteMark>
-        <Title>We publish feedback only with permission.</Title>
-        <Text>
-          We are collecting feedback from recent projects. Testimonials are
-          published only after a client has reviewed and approved them — never
-          invented, and never padded with stock quotes.
-        </Text>
-        <Button href="/contact" variant="secondary" size="sm">
-          Ask for references
+        <Title>{testimonialCopy.emptyTitle}</Title>
+        <Text>{testimonialCopy.emptyText}</Text>
+        <Button href="/work" variant="secondary" size="sm">
+          See the live projects
         </Button>
-        <Note>Testimonials coming soon</Note>
+        <Note>{testimonialCopy.note}</Note>
       </Copy>
       <Stack aria-label="Testimonial placeholders">
         {[0, 1, 2].map((index) => (

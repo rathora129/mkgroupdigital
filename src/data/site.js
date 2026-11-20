@@ -4,7 +4,7 @@ const siteConfig = {
   url: 'https://mkgroupdigital.com',
   tagline: 'We build digital experiences that drive growth.',
   description:
-    'MK Group Digital is a full-service digital agency building high-performing websites, brands, e-commerce and growth systems for ambitious businesses in India and worldwide.',
+    'MK Group Digital is a full-service IT, software development and digital solutions company building websites, business applications and growth systems for clients in India and worldwide.',
   email: 'query@mkgroupdigital.com',
   personalEmail: 'rathora129@gmail.com',
   phone: '+91 8076689539',
@@ -25,10 +25,11 @@ const siteConfig = {
   },
   nav: [
     { label: 'Home', href: '/' },
-    { label: 'Services', href: '/services' },
-    { label: 'Pricing', href: '/pricing' },
-    { label: 'Work', href: '/work' },
     { label: 'About', href: '/about' },
+    { label: 'Services', href: '/services' },
+    { label: 'Industries', href: '/industries' },
+    { label: 'Work', href: '/work' },
+    { label: 'Pricing', href: '/pricing' },
     { label: 'Contact', href: '/contact' },
   ],
   cta: { label: "Let's Talk", href: '/contact' },

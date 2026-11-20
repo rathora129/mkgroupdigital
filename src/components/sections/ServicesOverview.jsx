@@ -28,10 +28,10 @@ const Head = styled.div`
 
 const Grid = styled.div`
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.9rem;
 
-  ${media.down('lg')} {
+  ${media.down('md')} {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -201,7 +201,7 @@ export default function ServicesOverview({ showHeaderLink = true }) {
                 Everything Your Business <em>Needs to Grow.</em>
               </>
             }
-            description="Four connected capabilities — from the first line of strategy to the systems that keep growing after launch."
+            description="Five connected capabilities — websites, software, marketing, creative and technical support — from the first conversation to the systems that keep the business running."
             headingId="services-heading"
           />
           {showHeaderLink ? (
@@ -215,7 +215,7 @@ export default function ServicesOverview({ showHeaderLink = true }) {
 
         <Grid>
           {serviceCategories.map((category, index) => (
-            <Reveal key={category.slug} delay={(index % 4) * 0.06} y={18}>
+            <Reveal key={category.slug} delay={(index % 3) * 0.06} y={18}>
               <Card href={`/services#${category.slug}`}>
                 <Top>
                   <IconBadge className="card-icon">

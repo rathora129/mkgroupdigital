@@ -8,11 +8,12 @@ import {
   useReducedMotion,
   useSpring,
 } from 'framer-motion';
-import { Compass, Gauge, MousePointerClick, Sparkles } from 'lucide-react';
+import { Compass, Gauge, MessageCircle, MousePointerClick, Sparkles } from 'lucide-react';
 import styled from 'styled-components';
 import Container from '@/components/ui/Container';
 import Button from '@/components/ui/Button';
 import siteConfig from '@/data/site';
+import { hero } from '@/data/home';
 import { processSteps } from '@/data/content';
 import { media } from '@/styles/theme';
 
@@ -456,8 +457,8 @@ const PanelBottom = styled.div`
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.4rem;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.3rem;
   padding: 1rem 1.25rem 1.2rem;
   border-top: 1px solid ${({ theme }) => theme.colors.lineSoft};
 
@@ -468,17 +469,17 @@ const PanelBottom = styled.div`
   }
 
   small {
-    font-size: 0.56rem;
+    font-size: 0.54rem;
     letter-spacing: 0.12em;
     color: ${({ theme }) => theme.colors.faint};
   }
 
   b {
-    font-size: 0.68rem;
+    font-size: 0.6rem;
     font-weight: 500;
     letter-spacing: -0.01em;
     color: ${({ theme }) => theme.colors.textSoft};
-    white-space: nowrap;
+    line-height: 1.3;
   }
 `;
 
@@ -584,32 +585,41 @@ export default function Hero() {
       <Inner>
         <Copy variants={container} initial="hidden" animate="show">
           <motion.div variants={item}>
-            <Status>Digital agency · India &amp; Worldwide</Status>
+            <Status>{hero.status}</Status>
           </motion.div>
 
           <Title as={motion.h1} variants={item}>
-            <span className="line">We build digital</span>
-            <span className="line">experiences that</span>
+            {hero.titleLines.map((line) => (
+              <span className="line" key={line}>
+                {line}
+              </span>
+            ))}
             <span className="line">
-              <span className="accent">drive growth.</span>
+              <span className="accent">{hero.titleAccent}</span>
             </span>
           </Title>
 
           <motion.div variants={item}>
-            <Lead>
-              From high-performing websites to powerful digital marketing
-              strategies, we help businesses build their presence, connect with
-              customers, and grow online.
-            </Lead>
+            <Lead>{hero.description}</Lead>
           </motion.div>
 
           <motion.div variants={item} style={{ width: '100%' }}>
             <Actions>
-              <Button href="/contact" size="lg">
-                Start Your Project
+              <Button href={hero.primaryCta.href} size="lg">
+                {hero.primaryCta.label}
               </Button>
-              <Button href="/work" variant="secondary" size="lg">
-                Explore Our Work
+              <Button href={hero.secondaryCta.href} variant="secondary" size="lg">
+                {hero.secondaryCta.label}
+              </Button>
+              <Button
+                href={siteConfig.whatsappUrl}
+                external
+                variant="ghost"
+                size="lg"
+                icon={<MessageCircle size={17} strokeWidth={1.8} />}
+                arrow={false}
+              >
+                WhatsApp Us
               </Button>
             </Actions>
           </motion.div>
@@ -617,13 +627,13 @@ export default function Hero() {
           <motion.div variants={item} style={{ width: '100%', maxWidth: 540 }}>
             <Meta>
               <li>
-                <Compass size={14} strokeWidth={1.8} /> Strategy-led
+                <Compass size={14} strokeWidth={1.8} /> {hero.meta[0]}
               </li>
               <li>
-                <Sparkles size={14} strokeWidth={1.8} /> Design-driven
+                <Sparkles size={14} strokeWidth={1.8} /> {hero.meta[1]}
               </li>
               <li>
-                <Gauge size={14} strokeWidth={1.8} /> Performance-focused
+                <Gauge size={14} strokeWidth={1.8} /> {hero.meta[2]}
               </li>
             </Meta>
           </motion.div>

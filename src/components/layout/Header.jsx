@@ -23,6 +23,7 @@ import Button from '@/components/ui/Button';
 import Icon from '@/components/ui/Icon';
 import AnnouncementBar from './AnnouncementBar';
 import { serviceCategories } from '@/data/services';
+import { industries } from '@/data/industries';
 import siteConfig from '@/data/site';
 import { media } from '@/styles/theme';
 
@@ -167,6 +168,10 @@ const Mega = styled(motion.div)`
     inset: -1.15rem 0 auto;
     height: 1.15rem;
   }
+`;
+
+const IndustriesMega = styled(Mega)`
+  width: 540px;
 `;
 
 const MegaTop = styled.div`
@@ -453,9 +458,11 @@ export default function Header() {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
+  const [industriesOpen, setIndustriesOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activePath, setActivePath] = useState(pathname);
   const serviceAreaRef = useRef(null);
+  const industriesAreaRef = useRef(null);
   const overlayRef = useRef(null);
   const closeRef = useRef(null);
   const menuButtonRef = useRef(null);
@@ -463,6 +470,7 @@ export default function Header() {
   if (activePath !== pathname) {
     setActivePath(pathname);
     setServicesOpen(false);
+    setIndustriesOpen(false);
     setMobileOpen(false);
   }
 
@@ -497,6 +505,27 @@ export default function Header() {
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [servicesOpen]);
+
+  useEffect(() => {
+    if (!industriesOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (
+        industriesAreaRef.current &&
+        !industriesAreaRef.current.contains(event.target)
+      ) {
+        setIndustriesOpen(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setIndustriesOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [industriesOpen]);
 
   useEffect(() => {
     if (!mobileOpen) return undefined;
@@ -583,7 +612,10 @@ export default function Header() {
                       >
                         <MegaTop>
                           <span>Capabilities</span>
-                          <span>04 categories</span>
+                          <span>
+                            {String(serviceCategories.length).padStart(2, '0')}{' '}
+                            categories
+                          </span>
                         </MegaTop>
                         <MegaGrid>
                           {serviceCategories.map((category) => (
@@ -602,6 +634,66 @@ export default function Header() {
                           <ArrowUpRight size={15} />
                         </MegaFooter>
                       </Mega>
+                    ) : null}
+                  </AnimatePresence>
+                </ServiceArea>
+              ) : item.label === 'Industries' ? (
+                <ServiceArea
+                  key={item.href}
+                  ref={industriesAreaRef}
+                  onMouseEnter={() => setIndustriesOpen(true)}
+                  onMouseLeave={() => setIndustriesOpen(false)}
+                >
+                  <NavLink href={item.href} $active={isActive(item.href)}>
+                    {item.label}
+                  </NavLink>
+                  <Chevron
+                    type="button"
+                    aria-label="Show industries menu"
+                    aria-expanded={industriesOpen}
+                    aria-controls="industries-mega"
+                    onClick={() => setIndustriesOpen(true)}
+                  >
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        transform: industriesOpen ? 'rotate(180deg)' : 'none',
+                        transition: 'transform 0.3s ease',
+                      }}
+                    />
+                  </Chevron>
+                  <AnimatePresence>
+                    {industriesOpen ? (
+                      <IndustriesMega
+                        id="industries-mega"
+                        initial={{ opacity: 0, y: 10, scale: 0.985 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.985 }}
+                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                      >
+                        <MegaTop>
+                          <span>Industries</span>
+                          <span>
+                            {String(industries.length).padStart(2, '0')} sectors
+                          </span>
+                        </MegaTop>
+                        <MegaGrid>
+                          {industries.map((industry) => (
+                            <MegaLink
+                              key={industry.slug}
+                              href={`/industries#${industry.slug}`}
+                              onClick={() => setIndustriesOpen(false)}
+                            >
+                              <Icon name={industry.icon} size={16} strokeWidth={1.6} />
+                              {industry.name}
+                            </MegaLink>
+                          ))}
+                        </MegaGrid>
+                        <MegaFooter href="/industries">
+                          View all industries
+                          <ArrowUpRight size={15} />
+                        </MegaFooter>
+                      </IndustriesMega>
                     ) : null}
                   </AnimatePresence>
                 </ServiceArea>
@@ -694,6 +786,22 @@ export default function Header() {
                     >
                       <Icon name={category.icon} size={14} strokeWidth={1.7} />
                       {category.title}
+                    </Link>
+                  ))}
+                </div>
+              </MobileServices>
+
+              <MobileServices aria-label="Industries we serve">
+                <p>Industries we serve</p>
+                <div>
+                  {industries.map((industry) => (
+                    <Link
+                      key={industry.slug}
+                      href={`/industries#${industry.slug}`}
+                      onClick={closeMobile}
+                    >
+                      <Icon name={industry.icon} size={14} strokeWidth={1.7} />
+                      {industry.name}
                     </Link>
                   ))}
                 </div>

@@ -14,15 +14,23 @@ function escapeHtml(value = '') {
 }
 
 function leadRows(data) {
+  const services = Array.isArray(data.services) ? data.services : [];
   return [
-    ['Full name', data.fullName],
-    ['Email', data.email],
-    ['Phone / WhatsApp', data.phone || 'Not provided'],
-    ['Company / business', data.company || 'Not provided'],
-    ['Service', data.service],
-    ['Estimated budget', data.budget],
+    ['Name', data.fullName],
+    ['Company', data.company || 'Not provided'],
+    ['Mobile', data.mobile],
+    ['WhatsApp', data.whatsapp || 'Not provided'],
+    ['Email', data.email || 'Not provided'],
+    ['Location', data.location || 'Not provided'],
+    ['Industry', data.industry || 'Not provided'],
+    ['Interested services', services.length ? services.join(', ') : 'Not provided'],
+    ['Project type', data.projectType || 'Not provided'],
+    ['Existing website', data.existingWebsite || 'Not provided'],
+    ['Estimated budget', data.budget || 'Not provided'],
+    ['Expected timeline', data.timeline || 'Not provided'],
     ['Preferred contact', data.contactMethod],
-    ['Project details', data.details || 'Not provided'],
+    ['Preferred meeting', data.preferredMeeting || 'Not provided'],
+    ['Project details', data.details],
   ];
 }
 
@@ -57,8 +65,8 @@ async function sendViaResend(data) {
     body: JSON.stringify({
       from: process.env.CONTACT_FROM_EMAIL,
       to: [process.env.CONTACT_TO_EMAIL || siteConfig.email],
-      reply_to: data.email,
-      subject: `New enquiry — ${data.service} · ${
+      reply_to: data.email || undefined,
+      subject: `New enquiry — ${(data.services || []).join(', ') || 'Project'} · ${
         data.company || data.fullName
       }`,
       text: leadText(data),

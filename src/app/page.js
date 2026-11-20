@@ -1,10 +1,11 @@
 import Hero from '@/components/sections/Hero';
+import TrustIntro from '@/components/sections/TrustIntro';
 import ServicesOverview from '@/components/sections/ServicesOverview';
 import BusinessSoftware from '@/components/sections/BusinessSoftware';
-import WhyChoose from '@/components/sections/WhyChoose';
-import FeaturedWork from '@/components/sections/FeaturedWork';
-import ProcessSection from '@/components/sections/ProcessSection';
 import Industries from '@/components/sections/Industries';
+import FeaturedWork from '@/components/sections/FeaturedWork';
+import WhyChoose from '@/components/sections/WhyChoose';
+import ProcessSection from '@/components/sections/ProcessSection';
 import TestimonialsSection from '@/components/sections/TestimonialsSection';
 import FaqSection from '@/components/sections/FaqSection';
 import CtaSection from '@/components/sections/CtaSection';
@@ -28,12 +29,13 @@ export default function HomePage() {
   return (
     <>
       <Hero />
+      <TrustIntro />
       <ServicesOverview />
       <BusinessSoftware />
-      <WhyChoose />
-      <FeaturedWork />
-      <ProcessSection />
       <Industries />
+      <FeaturedWork />
+      <WhyChoose />
+      <ProcessSection />
       <TestimonialsSection />
       <FaqSection />
       <CtaSection />
