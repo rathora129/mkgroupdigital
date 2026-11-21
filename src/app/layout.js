@@ -1,9 +1,7 @@
 import { Inter, Space_Grotesk } from 'next/font/google';
 import StyledComponentsRegistry from '@/lib/registry';
 import Providers from '@/components/layout/Providers';
-import Header from '@/components/layout/Header';
-import Footer from '@/components/layout/Footer';
-import WhatsAppFloat from '@/components/layout/WhatsAppFloat';
+import SiteFrame from '@/components/layout/SiteFrame';
 import siteConfig from '@/data/site';
 import { JsonLd, organizationSchema, websiteSchema } from '@/lib/schema';
 
@@ -86,18 +84,18 @@ export default function RootLayout({ children }) {
       <body id="top">
         <StyledComponentsRegistry>
           <Providers>
-            <a className="skip-link" href="#main">
-              Skip to content
-            </a>
-            <Header />
-            <main id="main">{children}</main>
-            <Footer />
-            <WhatsAppFloat />
-            <div className="noise" aria-hidden="true" />
+            <SiteFrame
+              schemas={
+                <>
+                  <JsonLd data={organizationSchema()} />
+                  <JsonLd data={websiteSchema()} />
+                </>
+              }
+            >
+              {children}
+            </SiteFrame>
           </Providers>
         </StyledComponentsRegistry>
-        <JsonLd data={organizationSchema()} />
-        <JsonLd data={websiteSchema()} />
       </body>
     </html>
   );
