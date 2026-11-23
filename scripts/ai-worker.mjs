@@ -8,8 +8,11 @@ import http from 'node:http';
 import { isDatabaseConfigured, closeDb } from '@/db/client';
 import {
   AI_QUEUE_NAME,
+  EXECUTION_QUEUE_NAME,
+  INTEGRATION_QUEUE_NAME,
   RESEARCH_QUEUE_NAME,
   WEBSITE_AUDIT_QUEUE_NAME,
+  WORKFLOW_QUEUE_NAME,
   getBoss,
   getQueueCounts,
   stopQueue,
@@ -19,6 +22,11 @@ import {
   processResearchJob,
   processWebsiteAuditJob,
 } from '@/lib/ai/worker';
+import {
+  processExecutionRequestJob,
+  processWebhookJob,
+  processWorkflowRunJob,
+} from '@/lib/integrations/worker';
 
 const PORT = Number(process.env.AI_WORKER_HEALTH_PORT || 4319);
 const startedAt = new Date().toISOString();
@@ -121,6 +129,69 @@ async function startWorker() {
   });
 
   log(`website audit queue "${WEBSITE_AUDIT_QUEUE_NAME}" registered`);
+
+  await boss.work(INTEGRATION_QUEUE_NAME, { batchSize: 1 }, async (jobs) => {
+    const results = [];
+    for (const job of jobs) {
+      stats.lastJobAt = new Date().toISOString();
+      try {
+        const result = await processWebhookJob(job);
+        if (result.status === 'processed') stats.processed += 1;
+        if (result.status === 'failed') stats.failed += 1;
+        log(`webhook job ${job.id}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
+        results.push(result);
+      } catch (error) {
+        stats.failed += 1;
+        stats.lastError = error?.message || 'unknown error';
+        log(`webhook job ${job.id}: retryable failure — ${stats.lastError}`);
+        throw error;
+      }
+    }
+    return results;
+  });
+  log(`integration queue "${INTEGRATION_QUEUE_NAME}" registered`);
+
+  await boss.work(EXECUTION_QUEUE_NAME, { batchSize: 1 }, async (jobs) => {
+    const results = [];
+    for (const job of jobs) {
+      stats.lastJobAt = new Date().toISOString();
+      try {
+        const result = await processExecutionRequestJob(job);
+        if (result.status === 'completed') stats.processed += 1;
+        if (result.status === 'failed') stats.failed += 1;
+        log(`execution job ${job.id}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
+        results.push(result);
+      } catch (error) {
+        stats.failed += 1;
+        stats.lastError = error?.message || 'unknown error';
+        log(`execution job ${job.id}: retryable failure — ${stats.lastError}`);
+        throw error;
+      }
+    }
+    return results;
+  });
+  log(`execution queue "${EXECUTION_QUEUE_NAME}" registered`);
+
+  await boss.work(WORKFLOW_QUEUE_NAME, { batchSize: 1 }, async (jobs) => {
+    const results = [];
+    for (const job of jobs) {
+      stats.lastJobAt = new Date().toISOString();
+      try {
+        const result = await processWorkflowRunJob(job);
+        if (result.status === 'completed') stats.processed += 1;
+        if (result.status === 'failed') stats.failed += 1;
+        log(`workflow job ${job.id}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`);
+        results.push(result);
+      } catch (error) {
+        stats.failed += 1;
+        stats.lastError = error?.message || 'unknown error';
+        log(`workflow job ${job.id}: retryable failure — ${stats.lastError}`);
+        throw error;
+      }
+    }
+    return results;
+  });
+  log(`workflow queue "${WORKFLOW_QUEUE_NAME}" registered`);
 
   healthServer = http.createServer(async (request, response) => {
     if (request.url !== '/health') {

@@ -7,6 +7,7 @@ import {
   getOpportunity,
 } from '@/lib/opportunities/service';
 import { isUuid } from '@/lib/opportunities/validation';
+import { listProposalsForOpportunity } from '@/lib/proposals/service';
 import { getCatalogueOptions } from '@/lib/service-catalogue/service';
 import { listMembers } from '@/lib/workspace/service';
 
@@ -30,13 +31,17 @@ export default async function OpportunityDetailPage({ params }) {
   const canViewRequirements = hasPermission(role, 'requirements.view');
   const canEditRequirements = hasPermission(role, 'requirements.edit');
   const canAssign = hasPermission(role, 'opportunities.assign');
+  const canViewProposals = hasPermission(role, 'proposals.view');
 
-  const [document, members, services] = await Promise.all([
+  const [document, members, services, proposals] = await Promise.all([
     canViewRequirements
       ? buildRequirementDocument(workspaceId, opportunityId)
       : Promise.resolve(null),
     canAssign ? listMembers(workspaceId) : Promise.resolve([]),
     canEditRequirements ? getCatalogueOptions(workspaceId) : Promise.resolve([]),
+    canViewProposals
+      ? listProposalsForOpportunity(workspaceId, opportunityId)
+      : Promise.resolve([]),
   ]);
 
   if (!canViewRequirements) {
@@ -60,6 +65,10 @@ export default async function OpportunityDetailPage({ params }) {
         hasPermission(role, 'opportunities.update') &&
         hasPermission(role, 'agents.run')
       }
+      proposals={proposals}
+      canViewProposals={canViewProposals}
+      canCreateProposal={hasPermission(role, 'proposals.create')}
+      canExportProposal={hasPermission(role, 'proposals.export')}
     />
   );
 }

@@ -214,7 +214,7 @@ export default function SystemStatus() {
         </div>
         <div>
           <dt>Phase</dt>
-          <dd>{state.phaseLabel || '2D-A · Opportunities & Service Catalogue'}</dd>
+          <dd>{state.phaseLabel || '2H · Integration & Automation'}</dd>
         </div>
         <div>
           <dt>Database</dt>

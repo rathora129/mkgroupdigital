@@ -385,7 +385,7 @@ function SidebarContent({
       </Nav>
 
       <SidebarFooter>
-        <PhasePill>2C · Leads, Research &amp; Audits</PhasePill>
+        <PhasePill>Phase 2H · Integration &amp; Automation</PhasePill>
         <PublicLink href="/" target="_blank" rel="noopener noreferrer">
           Public website <ArrowUpRight size={13} />
         </PublicLink>
@@ -473,7 +473,7 @@ export default function WorkspaceShell({
               </Breadcrumb>
 
               <TopbarActions>
-                <TopbarPhase>2C · Leads, Research &amp; Audits</TopbarPhase>
+                <TopbarPhase>Phase 2H · Integration &amp; Automation</TopbarPhase>
                 <TopbarLink href="/" target="_blank" rel="noopener noreferrer">
                   Public website <ArrowUpRight size={13} />
                 </TopbarLink>

@@ -40,6 +40,7 @@ export const Lead = styled.p`
 export const Card = styled.section`
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 16px;
   padding: clamp(16px, 2.4vw, 22px);
   border-radius: ${({ theme }) => theme.radius.lg};
@@ -399,6 +400,7 @@ export const EmptyState = styled.div`
 `;
 
 export const TableWrap = styled.div`
+  min-width: 0;
   overflow-x: auto;
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: ${({ theme }) => theme.radius.md};

@@ -22,6 +22,11 @@ import {
 } from '@/db/schema';
 import { ApiError } from '@/lib/api-error';
 import { recordAudit, sanitizeMetadata } from '@/lib/audit';
+import {
+  buildRunContext,
+  combinePromptWithContext,
+  summarizeContext,
+} from '@/lib/knowledge/context';
 import { buildSystemInstructions } from './agent-types';
 import { ProviderError, RETRYABLE_CODES } from './errors';
 import { enqueueAgentRun } from './queue';
@@ -789,6 +794,7 @@ export async function createAgentRun({
   agentId,
   userId,
   input,
+  contextRefs = null,
   idempotencyKey = null,
   enqueue = enqueueAgentRun,
 }) {
@@ -824,7 +830,10 @@ export async function createAgentRun({
         workspaceId,
         agentId,
         status: approvalRequired ? 'awaiting_approval' : 'queued',
-        input: { [AI_INPUT_FIELD]: input },
+        input: {
+          [AI_INPUT_FIELD]: input,
+          ...(contextRefs ? { contextRefs } : {}),
+        },
         approvalRequired,
         requestedByUserId: userId,
         idempotencyKey,
@@ -1433,12 +1442,56 @@ export async function executeAgentRun(
 
   const input = String(claimed.input?.[AI_INPUT_FIELD] || '');
 
+  let contextPackage = null;
+  try {
+    contextPackage = await buildRunContext({
+      workspaceId: run.workspaceId,
+      agent,
+      userId: run.requestedByUserId,
+      input,
+      contextRefs: claimed.input?.contextRefs || null,
+    });
+    if (contextPackage.hasContext) {
+      await appendRunLog({
+        workspaceId: run.workspaceId,
+        runId,
+        message: 'Workspace knowledge context attached to the task.',
+        metadata: {
+          counts: contextPackage.counts,
+          contextTokens: contextPackage.contextTokens,
+          sources: contextPackage.sources.length,
+        },
+      });
+    } else {
+      await appendRunLog({
+        workspaceId: run.workspaceId,
+        runId,
+        message:
+          'No matching workspace knowledge or memory was found for this task.',
+        metadata: { counts: contextPackage.counts },
+      });
+    }
+  } catch {
+    contextPackage = null;
+    await appendRunLog({
+      workspaceId: run.workspaceId,
+      runId,
+      level: 'warn',
+      message:
+        'Workspace context could not be retrieved; the run continues without it.',
+    });
+  }
+
+  const promptInput = contextPackage
+    ? combinePromptWithContext(contextPackage, input)
+    : input;
+
   try {
     const result = await generate({
       provider: agent.provider,
       model: agent.model,
       instructions: buildSystemInstructions(agent),
-      input,
+      input: promptInput,
       timeoutMs: 90_000,
       signal: controller.signal,
     });
@@ -1464,7 +1517,16 @@ export async function executeAgentRun(
           toolCalls: result.toolCalls || [],
           provider: agent.provider,
           model: agent.model,
+          context: contextPackage
+            ? {
+                hasContext: contextPackage.hasContext,
+                counts: contextPackage.counts,
+                contextTokens: contextPackage.contextTokens,
+              }
+            : null,
         },
+        contextSources: summarizeContext(contextPackage),
+        contextTokens: contextPackage?.contextTokens || 0,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         costEstimateCents: costCents,

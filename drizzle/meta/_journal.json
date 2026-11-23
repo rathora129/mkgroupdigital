@@ -36,6 +36,48 @@
       "when": 1795415686277,
       "tag": "0004_heavy_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795419426305,
+      "tag": "0005_handy_cardiac",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795423927539,
+      "tag": "0006_lazy_zzzax",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795430519337,
+      "tag": "0007_strange_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795438338677,
+      "tag": "0008_adorable_lady_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795438671268,
+      "tag": "0009_big_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795441045918,
+      "tag": "0010_lucky_hulk",
+      "breakpoints": true
     }
   ]
 }

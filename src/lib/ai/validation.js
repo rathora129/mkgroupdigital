@@ -107,6 +107,17 @@ export const runCreateSchema = yup.object({
     .max(200, 'Idempotency key is too long.')
     .matches(/^[A-Za-z0-9._:-]*$/, 'Use letters, numbers, dot, dash, underscore or colon.')
     .nullable(),
+  contextRefs: yup
+    .object({
+      clientId: yup.string().uuid('Choose a valid client.').nullable(),
+      projectId: yup.string().uuid('Choose a valid project.').nullable(),
+      leadId: yup.string().uuid('Choose a valid lead.').nullable(),
+      opportunityId: yup.string().uuid('Choose a valid opportunity.').nullable(),
+      proposalId: yup.string().uuid('Choose a valid proposal.').nullable(),
+      ticketId: yup.string().uuid('Choose a valid ticket.').nullable(),
+    })
+    .nullable()
+    .default(null),
 });
 
 export const approvalDecisionSchema = yup.object({

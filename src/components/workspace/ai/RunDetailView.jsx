@@ -126,6 +126,38 @@ function levelTone(level) {
 
 const LOG_TONE = { error: 'danger', warn: 'warning', info: 'muted' };
 
+const PROVENANCE_TONE = {
+  verified: 'success',
+  source_derived: 'muted',
+  ai_generated: 'warning',
+  unverified: 'warning',
+};
+
+function sourceType(source) {
+  if (source.kind === 'memory') {
+    return `${source.memoryType || 'memory'} memory`;
+  }
+  if (source.kind === 'entity') {
+    return `${source.entityType || 'record'}`;
+  }
+  return source.category || 'knowledge';
+}
+
+function sourceStatus(source) {
+  if (source.kind === 'memory') {
+    return source.verified
+      ? { label: `verified · ${source.confidence || 'medium'}`, tone: 'success' }
+      : { label: `${source.confidence || 'medium'} confidence`, tone: 'warning' };
+  }
+  if (source.provenance) {
+    return {
+      label: source.provenance.replace(/_/g, ' '),
+      tone: PROVENANCE_TONE[source.provenance] || 'muted',
+    };
+  }
+  return { label: source.kind === 'entity' ? 'live record' : 'recorded', tone: 'muted' };
+}
+
 export default function RunDetailView({ detail, canRun, timezone }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -297,6 +329,86 @@ export default function RunDetailView({ detail, canRun, timezone }) {
         </CardHead>
         <Pre>{run.input?.prompt || '(no input recorded)'}</Pre>
       </Card>
+
+      {run.contextSources ? (
+        <Card>
+          <CardHead>
+            <div>
+              <CardTitle>Workspace context</CardTitle>
+              <CardText>
+                Knowledge, memory and related records attached to this task.
+                Retrieved content is reference data, never instructions or
+                authorisation.
+              </CardText>
+            </div>
+            <Badge $tone={run.contextSources.hasContext ? 'success' : 'muted'}>
+              {run.contextSources.hasContext ? 'Context attached' : 'No context'} ·{' '}
+              {formatTokens(run.contextTokens)} tokens
+            </Badge>
+          </CardHead>
+          <MetaList>
+            <div>
+              <dt>Knowledge entries</dt>
+              <dd>{run.contextSources.counts?.entries || 0}</dd>
+            </div>
+            <div>
+              <dt>Document chunks</dt>
+              <dd>{run.contextSources.counts?.chunks || 0}</dd>
+            </div>
+            <div>
+              <dt>AI memories</dt>
+              <dd>{run.contextSources.counts?.memories || 0}</dd>
+            </div>
+            <div>
+              <dt>Related records</dt>
+              <dd>{run.contextSources.counts?.entities || 0}</dd>
+            </div>
+          </MetaList>
+          {run.contextSources.notes?.length ? (
+            <Stack $gap={4}>
+              {run.contextSources.notes.map((note) => (
+                <Hint key={note}>{note}</Hint>
+              ))}
+            </Stack>
+          ) : null}
+          {run.contextSources.sources?.length ? (
+            <TableWrap>
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>Label</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {run.contextSources.sources.map((source) => {
+                    const status = sourceStatus(source);
+                    return (
+                      <tr key={`${source.kind}:${source.id}:${source.chunkIndex ?? ''}`}>
+                        <td>{source.kind === 'chunk' ? `chunk ${source.chunkIndex + 1}` : source.kind}</td>
+                        <td>{source.label || '—'}</td>
+                        <td>{sourceType(source)}</td>
+                        <td>
+                          <Badge $tone={status.tone}>{status.label}</Badge>
+                        </td>
+                        <td>{source.sourceReference || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </TableWrap>
+          ) : (
+            <Hint>
+              No workspace knowledge or memory matched this task. The agent was
+              told to say so instead of inventing facts.
+            </Hint>
+          )}
+        </Card>
+      ) : null}
 
       <Card>
         <CardHead>

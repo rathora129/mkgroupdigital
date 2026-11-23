@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -283,6 +284,8 @@ export const agentRuns = pgTable(
     status: agentRunStatus('status').notNull().default('queued'),
     input: jsonb('input').notNull().default({}),
     output: jsonb('output'),
+    contextSources: jsonb('context_sources'),
+    contextTokens: integer('context_tokens').notNull().default(0),
     errorMessage: text('error_message'),
     promptTokens: integer('prompt_tokens').notNull().default(0),
     completionTokens: integer('completion_tokens').notNull().default(0),
@@ -468,6 +471,23 @@ export const websiteAuditSeverity = pgEnum('website_audit_severity', [
   'medium',
   'low',
   'info',
+]);
+
+// Phase 2G — how a marketing finding was produced and where it stands.
+// A verified finding comes from the local audit engine, manual from a person,
+// ai_suggestion from the AI runtime and unverified is an untriaged statement.
+export const marketingFindingSource = pgEnum('marketing_finding_source', [
+  'verified',
+  'manual',
+  'ai_suggestion',
+  'unverified',
+]);
+
+export const marketingFindingStatus = pgEnum('marketing_finding_status', [
+  'open',
+  'in_progress',
+  'resolved',
+  'wont_fix',
 ]);
 
 export const leads = pgTable(
@@ -715,6 +735,21 @@ export const websiteAudits = pgTable(
     categoryScores: jsonb('category_scores'),
     scoringMethod: text('scoring_method'),
     errorMessage: text('error_message'),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'set null',
+    }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    auditDate: timestamp('audit_date', { withTimezone: true, mode: 'date' }),
+    assignedToUserId: uuid('assigned_to_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    // Structured manual checklist answers for the categories the engine does
+    // not verify on its own (local SEO, content quality, competitor notes).
+    checklist: jsonb('checklist'),
+    notes: text('notes'),
+    captureMode: text('capture_mode').notNull().default('engine'),
     cancelRequested: boolean('cancel_requested').notNull().default(false),
     jobId: text('job_id'),
     requestedByUserId: uuid('requested_by_user_id').references(() => users.id, {
@@ -742,6 +777,14 @@ export const websiteAudits = pgTable(
     index('website_audits_workspace_url_idx').on(
       table.workspaceId,
       table.normalizedUrl,
+    ),
+    index('website_audits_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('website_audits_workspace_project_idx').on(
+      table.workspaceId,
+      table.projectId,
     ),
   ],
 );
@@ -799,9 +842,22 @@ export const websiteAuditFindings = pgTable(
     evidence: text('evidence'),
     recommendation: text('recommendation').notNull(),
     sourcePage: text('source_page'),
+    sourceType: marketingFindingSource('source_type').notNull().default('verified'),
+    status: marketingFindingStatus('status').notNull().default('open'),
+    assignedToUserId: uuid('assigned_to_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    linkedTaskId: uuid('linked_task_id').references(() => projectTasks.id, {
+      onDelete: 'set null',
+    }),
+    completionNotes: text('completion_notes'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('website_audit_findings_audit_idx').on(
@@ -809,6 +865,11 @@ export const websiteAuditFindings = pgTable(
       table.category,
     ),
     index('website_audit_findings_workspace_idx').on(table.workspaceId),
+    index('website_audit_findings_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('website_audit_findings_linked_task_idx').on(table.linkedTaskId),
   ],
 );
 
@@ -866,6 +927,42 @@ export const requirementItemStatus = pgEnum('requirement_item_status', [
 ]);
 
 export const serviceStatus = pgEnum('service_status', ['active', 'archived']);
+
+export const proposalStatus = pgEnum('proposal_status', [
+  'draft',
+  'internal_review',
+  'approved',
+  'sent',
+  'accepted',
+  'rejected',
+]);
+
+export const proposalItemKind = pgEnum('proposal_item_kind', [
+  'included',
+  'optional',
+  'excluded',
+]);
+
+export const proposalDiscountType = pgEnum('proposal_discount_type', [
+  'none',
+  'fixed',
+  'percent',
+]);
+
+export const proposalTaxScheme = pgEnum('proposal_tax_scheme', [
+  'none',
+  'cgst_sgst',
+  'igst',
+]);
+
+export const proposalBillingType = pgEnum('proposal_billing_type', [
+  'one_time',
+  'monthly',
+  'quarterly',
+  'annual',
+  'milestone',
+  'custom',
+]);
 
 export const serviceCategories = pgTable(
   'service_categories',
@@ -1159,5 +1256,2627 @@ export const opportunityStageHistory = pgTable(
       table.workspaceId,
       table.createdAt,
     ),
+  ],
+);
+
+// Phase 2D-B: proposals. Every row carries workspaceId so queries can be
+// scoped without joining through the opportunity, and the reference is unique
+// per workspace. currentVersionId is an index-backed pointer resolved by the
+// service layer (a hard FK would make proposals <-> versions circular).
+export const proposals = pgTable(
+  'proposals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    leadId: uuid('lead_id')
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    opportunityId: uuid('opportunity_id')
+      .notNull()
+      .references(() => opportunities.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    title: text('title').notNull(),
+    status: proposalStatus('status').notNull().default('draft'),
+    currentVersionId: uuid('current_version_id'),
+    salesOwnerUserId: uuid('sales_owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('proposals_workspace_reference_unique').on(
+      table.workspaceId,
+      table.reference,
+    ),
+    index('proposals_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+    index('proposals_workspace_status_idx').on(table.workspaceId, table.status),
+    index('proposals_workspace_opportunity_idx').on(
+      table.workspaceId,
+      table.opportunityId,
+    ),
+    index('proposals_workspace_owner_idx').on(
+      table.workspaceId,
+      table.salesOwnerUserId,
+    ),
+  ],
+);
+
+export const proposalVersions = pgTable(
+  'proposal_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    versionNumber: integer('version_number').notNull(),
+    status: proposalStatus('status').notNull().default('draft'),
+    changeSummary: text('change_summary'),
+    previousVersionId: uuid('previous_version_id').references(
+      () => proposalVersions.id,
+      { onDelete: 'set null' },
+    ),
+    currency: text('currency').notNull().default('INR'),
+    validityDate: timestamp('validity_date', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    // Snapshot of the deterministic calculation at save/approval time.
+    subtotalCents: integer('subtotal_cents').notNull().default(0),
+    itemDiscountCents: integer('item_discount_cents').notNull().default(0),
+    proposalDiscountCents: integer('proposal_discount_cents')
+      .notNull()
+      .default(0),
+    discountTotalCents: integer('discount_total_cents').notNull().default(0),
+    taxableCents: integer('taxable_cents').notNull().default(0),
+    taxCents: integer('tax_cents').notNull().default(0),
+    grandTotalCents: integer('grand_total_cents').notNull().default(0),
+    oneTimeTotalCents: integer('one_time_total_cents').notNull().default(0),
+    recurringMonthlyCents: integer('recurring_monthly_cents')
+      .notNull()
+      .default(0),
+    recurringQuarterlyCents: integer('recurring_quarterly_cents')
+      .notNull()
+      .default(0),
+    recurringAnnualCents: integer('recurring_annual_cents').notNull().default(0),
+    optionalTotalCents: integer('optional_total_cents').notNull().default(0),
+    cgstCents: integer('cgst_cents').notNull().default(0),
+    sgstCents: integer('sgst_cents').notNull().default(0),
+    igstCents: integer('igst_cents').notNull().default(0),
+    proposalDiscountType: proposalDiscountType('proposal_discount_type')
+      .notNull()
+      .default('none'),
+    proposalDiscountValue: integer('proposal_discount_value')
+      .notNull()
+      .default(0),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedByUserId: uuid('approved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at', { withTimezone: true, mode: 'date' }),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'date' }),
+    respondedAt: timestamp('responded_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('proposal_versions_proposal_number_unique').on(
+      table.proposalId,
+      table.versionNumber,
+    ),
+    index('proposal_versions_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('proposal_versions_workspace_validity_idx').on(
+      table.workspaceId,
+      table.validityDate,
+    ),
+  ],
+);
+
+export const proposalLineItems = pgTable(
+  'proposal_line_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => proposalVersions.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, {
+      onDelete: 'set null',
+    }),
+    // Snapshot of the catalogue service so later catalogue edits never
+    // rewrite an existing quotation.
+    serviceName: text('service_name'),
+    serviceCategoryName: text('service_category_name'),
+    regulated: boolean('regulated').notNull().default(false),
+    reviewProfession: text('review_profession'),
+    reviewNotes: text('review_notes'),
+    name: text('name').notNull(),
+    description: text('description'),
+    scope: text('scope'),
+    quantity: integer('quantity').notNull().default(1),
+    unit: text('unit').notNull().default('unit'),
+    unitPriceCents: integer('unit_price_cents').notNull().default(0),
+    discountType: proposalDiscountType('discount_type').notNull().default('none'),
+    discountValue: integer('discount_value').notNull().default(0),
+    taxScheme: proposalTaxScheme('tax_scheme').notNull().default('none'),
+    taxRateBps: integer('tax_rate_bps').notNull().default(0),
+    billingType: proposalBillingType('billing_type')
+      .notNull()
+      .default('one_time'),
+    startCondition: text('start_condition'),
+    billingNotes: text('billing_notes'),
+    minimumCommitmentMonths: integer('minimum_commitment_months'),
+    kind: proposalItemKind('kind').notNull().default('included'),
+    lineSubtotalCents: integer('line_subtotal_cents').notNull().default(0),
+    lineDiscountCents: integer('line_discount_cents').notNull().default(0),
+    lineNetCents: integer('line_net_cents').notNull().default(0),
+    lineTaxCents: integer('line_tax_cents').notNull().default(0),
+    lineTotalCents: integer('line_total_cents').notNull().default(0),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('proposal_line_items_version_order_idx').on(
+      table.versionId,
+      table.displayOrder,
+    ),
+    index('proposal_line_items_workspace_idx').on(table.workspaceId),
+  ],
+);
+
+export const proposalSections = pgTable(
+  'proposal_sections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => proposalVersions.id, { onDelete: 'cascade' }),
+    sectionKey: text('section_key').notNull(),
+    content: text('content'),
+    displayOrder: integer('display_order').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('proposal_sections_version_key_unique').on(
+      table.versionId,
+      table.sectionKey,
+    ),
+  ],
+);
+
+export const proposalDeliverables = pgTable(
+  'proposal_deliverables',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => proposalVersions.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, {
+      onDelete: 'set null',
+    }),
+    title: text('title').notNull(),
+    description: text('description'),
+    expectedCompletion: text('expected_completion'),
+    displayOrder: integer('display_order').notNull().default(0),
+  },
+  (table) => [
+    index('proposal_deliverables_version_order_idx').on(
+      table.versionId,
+      table.displayOrder,
+    ),
+  ],
+);
+
+export const proposalMilestones = pgTable(
+  'proposal_milestones',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => proposalVersions.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, {
+      onDelete: 'set null',
+    }),
+    title: text('title').notNull(),
+    description: text('description'),
+    expectedCompletion: text('expected_completion'),
+    displayOrder: integer('display_order').notNull().default(0),
+  },
+  (table) => [
+    index('proposal_milestones_version_order_idx').on(
+      table.versionId,
+      table.displayOrder,
+    ),
+  ],
+);
+
+export const proposalApprovals = pgTable(
+  'proposal_approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => proposalVersions.id, { onDelete: 'cascade' }),
+    decision: text('decision').notNull(),
+    notes: text('notes'),
+    actorUserId: uuid('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('proposal_approvals_version_created_idx').on(
+      table.versionId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const proposalResponses = pgTable(
+  'proposal_responses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => proposalVersions.id, { onDelete: 'cascade' }),
+    response: text('response').notNull(),
+    notes: text('notes'),
+    actorUserId: uuid('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('proposal_responses_version_unique').on(table.versionId),
+  ],
+);
+
+export const proposalActivity = pgTable(
+  'proposal_activity',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => proposals.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id').references(() => proposalVersions.id, {
+      onDelete: 'set null',
+    }),
+    type: text('type').notNull(),
+    body: text('body'),
+    metadata: jsonb('metadata'),
+    actorUserId: uuid('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('proposal_activity_proposal_created_idx').on(
+      table.proposalId,
+      table.createdAt,
+    ),
+    index('proposal_activity_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Phase 2D-C/D/E — delivery, client operations and billing
+// ---------------------------------------------------------------------------
+
+export const projectStatus = pgEnum('project_status', [
+  'not_started',
+  'planning',
+  'in_progress',
+  'client_review',
+  'on_hold',
+  'completed',
+  'cancelled',
+]);
+
+export const taskStatus = pgEnum('task_status', [
+  'todo',
+  'in_progress',
+  'blocked',
+  'in_review',
+  'completed',
+  'cancelled',
+]);
+
+export const taskPriority = pgEnum('task_priority', [
+  'low',
+  'medium',
+  'high',
+  'urgent',
+]);
+
+export const milestoneReviewStatus = pgEnum('milestone_review_status', [
+  'pending',
+  'in_review',
+  'approved',
+  'changes_requested',
+]);
+
+export const clientApprovalStatus = pgEnum('client_approval_status', [
+  'not_requested',
+  'pending',
+  'approved',
+  'rejected',
+]);
+
+export const scopeChangeStatus = pgEnum('scope_change_status', [
+  'requested',
+  'approved',
+  'rejected',
+  'withdrawn',
+]);
+
+export const clientStatus = pgEnum('client_status', [
+  'active',
+  'inactive',
+  'archived',
+]);
+
+export const engagementStatus = pgEnum('engagement_status', [
+  'planned',
+  'active',
+  'paused',
+  'ending',
+  'ended',
+  'cancelled',
+]);
+
+export const engagementFrequency = pgEnum('engagement_frequency', [
+  'one_time',
+  'weekly',
+  'monthly',
+  'quarterly',
+  'annual',
+  'custom',
+]);
+
+export const ticketStatus = pgEnum('ticket_status', [
+  'open',
+  'assigned',
+  'in_progress',
+  'waiting_client',
+  'resolved',
+  'closed',
+]);
+
+export const ticketMessageVisibility = pgEnum('ticket_message_visibility', [
+  'internal',
+  'client',
+]);
+
+export const invoiceStatus = pgEnum('invoice_status', [
+  'draft',
+  'pending_approval',
+  'approved',
+  'issued',
+  'partially_paid',
+  'paid',
+  'cancelled',
+]);
+
+export const invoiceSource = pgEnum('invoice_source', [
+  'proposal',
+  'engagement',
+  'manual',
+]);
+
+export const paymentMethod = pgEnum('payment_method', [
+  'bank_transfer',
+  'upi',
+  'card',
+  'cash',
+  'cheque',
+  'other',
+]);
+
+export const expenseStatus = pgEnum('expense_status', [
+  'pending_approval',
+  'approved',
+  'rejected',
+]);
+
+export const clientTimelineType = pgEnum('client_timeline_type', [
+  'note',
+  'meeting',
+  'call',
+  'email_manual',
+]);
+
+// A client is an explicit, human-created relationship record. It links to the
+// original lead so the sales history stays intact; records are never merged
+// automatically and one lead can back at most one client per workspace.
+export const clients = pgTable(
+  'clients',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    companyName: text('company_name').notNull(),
+    primaryContactName: text('primary_contact_name'),
+    email: text('email'),
+    phone: text('phone'),
+    website: text('website'),
+    industry: text('industry'),
+    address: text('address'),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    status: clientStatus('status').notNull().default('active'),
+    internalNotes: text('internal_notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('clients_workspace_reference_unique').on(
+      table.workspaceId,
+      table.reference,
+    ),
+    uniqueIndex('clients_workspace_lead_unique')
+      .on(table.workspaceId, table.leadId)
+      .where(sql`${table.leadId} is not null`),
+    index('clients_workspace_status_idx').on(table.workspaceId, table.status),
+    index('clients_workspace_owner_idx').on(
+      table.workspaceId,
+      table.ownerUserId,
+    ),
+  ],
+);
+
+export const clientContacts = pgTable(
+  'client_contacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    title: text('title'),
+    email: text('email'),
+    phone: text('phone'),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    notes: text('notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('client_contacts_client_idx').on(table.clientId, table.createdAt),
+    index('client_contacts_workspace_idx').on(table.workspaceId),
+  ],
+);
+
+// A project is created only from an accepted proposal. The commercial snapshot
+// is frozen at creation so later proposal or catalogue edits never rewrite the
+// agreed scope.
+export const projects = pgTable(
+  'projects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'set null',
+    }),
+    leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    opportunityId: uuid('opportunity_id').references(() => opportunities.id, {
+      onDelete: 'set null',
+    }),
+    proposalId: uuid('proposal_id').references(() => proposals.id, {
+      onDelete: 'set null',
+    }),
+    proposalVersionId: uuid('proposal_version_id').references(
+      () => proposalVersions.id,
+      { onDelete: 'set null' },
+    ),
+    name: text('name').notNull(),
+    status: projectStatus('status').notNull().default('not_started'),
+    priority: taskPriority('priority').notNull().default('medium'),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    startDate: timestamp('start_date', { withTimezone: true, mode: 'date' }),
+    expectedCompletionDate: timestamp('expected_completion_date', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    actualCompletionDate: timestamp('actual_completion_date', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    description: text('description'),
+    internalNotes: text('internal_notes'),
+    currency: text('currency').notNull().default('INR'),
+    acceptedValueCents: integer('accepted_value_cents').notNull().default(0),
+    recurringMonthlyCents: integer('recurring_monthly_cents')
+      .notNull()
+      .default(0),
+    recurringQuarterlyCents: integer('recurring_quarterly_cents')
+      .notNull()
+      .default(0),
+    recurringAnnualCents: integer('recurring_annual_cents')
+      .notNull()
+      .default(0),
+    commercialSnapshot: jsonb('commercial_snapshot'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('projects_workspace_reference_unique').on(
+      table.workspaceId,
+      table.reference,
+    ),
+    uniqueIndex('projects_workspace_proposal_unique')
+      .on(table.workspaceId, table.proposalId)
+      .where(sql`${table.proposalId} is not null`),
+    index('projects_workspace_status_idx').on(table.workspaceId, table.status),
+    index('projects_workspace_owner_idx').on(
+      table.workspaceId,
+      table.ownerUserId,
+    ),
+    index('projects_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('projects_workspace_completion_idx').on(
+      table.workspaceId,
+      table.expectedCompletionDate,
+    ),
+  ],
+);
+
+export const projectMembers = pgTable(
+  'project_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('member'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('project_members_project_user_unique').on(
+      table.projectId,
+      table.userId,
+    ),
+    index('project_members_workspace_user_idx').on(
+      table.workspaceId,
+      table.userId,
+    ),
+  ],
+);
+
+export const projectStatusHistory = pgTable(
+  'project_status_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    fromStatus: projectStatus('from_status'),
+    toStatus: projectStatus('to_status').notNull(),
+    note: text('note'),
+    actorUserId: uuid('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('project_status_history_project_idx').on(
+      table.projectId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const projectTasks = pgTable(
+  'project_tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    status: taskStatus('status').notNull().default('todo'),
+    priority: taskPriority('priority').notNull().default('medium'),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    startDate: timestamp('start_date', { withTimezone: true, mode: 'date' }),
+    dueDate: timestamp('due_date', { withTimezone: true, mode: 'date' }),
+    estimatedMinutes: integer('estimated_minutes').notNull().default(0),
+    actualMinutes: integer('actual_minutes').notNull().default(0),
+    completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
+    // Phase 2G task automation: a task may be generated from a recommendation.
+    // sourceType/sourceId identify the origin so duplicate open tasks can be
+    // detected and the acceptance criteria and evidence stay with the work.
+    sourceType: text('source_type'),
+    sourceId: uuid('source_id'),
+    acceptanceCriteria: text('acceptance_criteria'),
+    completionEvidence: text('completion_evidence'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('project_tasks_source_unique')
+      .on(table.workspaceId, table.sourceType, table.sourceId)
+      .where(sql`${table.sourceId} is not null`),
+    index('project_tasks_project_status_idx').on(
+      table.projectId,
+      table.status,
+    ),
+    index('project_tasks_workspace_owner_idx').on(
+      table.workspaceId,
+      table.ownerUserId,
+    ),
+    index('project_tasks_workspace_due_idx').on(
+      table.workspaceId,
+      table.dueDate,
+    ),
+  ],
+);
+
+export const taskCollaborators = pgTable(
+  'task_collaborators',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => projectTasks.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('task_collaborators_task_user_unique').on(
+      table.taskId,
+      table.userId,
+    ),
+  ],
+);
+
+export const taskDependencies = pgTable(
+  'task_dependencies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => projectTasks.id, { onDelete: 'cascade' }),
+    dependsOnTaskId: uuid('depends_on_task_id')
+      .notNull()
+      .references(() => projectTasks.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('task_dependencies_task_unique').on(
+      table.taskId,
+      table.dependsOnTaskId,
+    ),
+    index('task_dependencies_workspace_idx').on(table.workspaceId),
+  ],
+);
+
+export const taskComments = pgTable(
+  'task_comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => projectTasks.id, { onDelete: 'cascade' }),
+    authorUserId: uuid('author_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    body: text('body').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('task_comments_task_idx').on(table.taskId, table.createdAt),
+  ],
+);
+
+export const projectMilestones = pgTable(
+  'project_milestones',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    proposalMilestoneId: uuid('proposal_milestone_id').references(
+      () => proposalMilestones.id,
+      { onDelete: 'set null' },
+    ),
+    title: text('title').notNull(),
+    description: text('description'),
+    targetDate: timestamp('target_date', { withTimezone: true, mode: 'date' }),
+    completionDate: timestamp('completion_date', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewStatus: milestoneReviewStatus('review_status')
+      .notNull()
+      .default('pending'),
+    clientApprovalStatus: clientApprovalStatus('client_approval_status')
+      .notNull()
+      .default('not_requested'),
+    evidenceNotes: text('evidence_notes'),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('project_milestones_project_order_idx').on(
+      table.projectId,
+      table.displayOrder,
+    ),
+    index('project_milestones_workspace_target_idx').on(
+      table.workspaceId,
+      table.targetDate,
+    ),
+  ],
+);
+
+export const projectDeliverables = pgTable(
+  'project_deliverables',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    proposalDeliverableId: uuid('proposal_deliverable_id').references(
+      () => proposalDeliverables.id,
+      { onDelete: 'set null' },
+    ),
+    title: text('title').notNull(),
+    description: text('description'),
+    targetDate: timestamp('target_date', { withTimezone: true, mode: 'date' }),
+    completionDate: timestamp('completion_date', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewStatus: milestoneReviewStatus('review_status')
+      .notNull()
+      .default('pending'),
+    clientApprovalStatus: clientApprovalStatus('client_approval_status')
+      .notNull()
+      .default('not_requested'),
+    evidenceNotes: text('evidence_notes'),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('project_deliverables_project_order_idx').on(
+      table.projectId,
+      table.displayOrder,
+    ),
+  ],
+);
+
+export const projectScopeChanges = pgTable(
+  'project_scope_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    impactNotes: text('impact_notes'),
+    status: scopeChangeStatus('status').notNull().default('requested'),
+    requestedByUserId: uuid('requested_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    decidedByUserId: uuid('decided_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    decidedAt: timestamp('decided_at', { withTimezone: true, mode: 'date' }),
+    decisionNotes: text('decision_notes'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('project_scope_changes_project_idx').on(
+      table.projectId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const projectActivity = pgTable(
+  'project_activity',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id').references(() => projectTasks.id, {
+      onDelete: 'set null',
+    }),
+    type: text('type').notNull(),
+    body: text('body'),
+    metadata: jsonb('metadata'),
+    actorUserId: uuid('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('project_activity_project_created_idx').on(
+      table.projectId,
+      table.createdAt,
+    ),
+    index('project_activity_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const serviceEngagements = pgTable(
+  'service_engagements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    serviceId: uuid('service_id').references(() => services.id, {
+      onDelete: 'set null',
+    }),
+    proposalId: uuid('proposal_id').references(() => proposals.id, {
+      onDelete: 'set null',
+    }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    managerUserId: uuid('manager_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    status: engagementStatus('status').notNull().default('planned'),
+    frequency: engagementFrequency('frequency').notNull().default('monthly'),
+    startDate: timestamp('start_date', { withTimezone: true, mode: 'date' }),
+    endDate: timestamp('end_date', { withTimezone: true, mode: 'date' }),
+    renewalDate: timestamp('renewal_date', { withTimezone: true, mode: 'date' }),
+    scopeReference: text('scope_reference'),
+    contractValueCents: integer('contract_value_cents').notNull().default(0),
+    currency: text('currency').notNull().default('INR'),
+    internalNotes: text('internal_notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('service_engagements_client_status_idx').on(
+      table.clientId,
+      table.status,
+    ),
+    index('service_engagements_workspace_renewal_idx').on(
+      table.workspaceId,
+      table.renewalDate,
+    ),
+  ],
+);
+
+export const supportTickets = pgTable(
+  'support_tickets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    subject: text('subject').notNull(),
+    description: text('description'),
+    category: text('category').notNull().default('general'),
+    priority: taskPriority('priority').notNull().default('medium'),
+    assignedUserId: uuid('assigned_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    status: ticketStatus('status').notNull().default('open'),
+    dueDate: timestamp('due_date', { withTimezone: true, mode: 'date' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+    resolutionNotes: text('resolution_notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('support_tickets_workspace_reference_unique').on(
+      table.workspaceId,
+      table.reference,
+    ),
+    index('support_tickets_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('support_tickets_workspace_due_idx').on(
+      table.workspaceId,
+      table.dueDate,
+    ),
+    index('support_tickets_client_idx').on(table.clientId, table.createdAt),
+  ],
+);
+
+export const ticketMessages = pgTable(
+  'ticket_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ticketId: uuid('ticket_id')
+      .notNull()
+      .references(() => supportTickets.id, { onDelete: 'cascade' }),
+    authorUserId: uuid('author_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    body: text('body').notNull(),
+    visibility: ticketMessageVisibility('visibility')
+      .notNull()
+      .default('internal'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('ticket_messages_ticket_idx').on(table.ticketId, table.createdAt),
+  ],
+);
+
+export const clientTimelineEntries = pgTable(
+  'client_timeline_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    type: clientTimelineType('type').notNull().default('note'),
+    title: text('title').notNull(),
+    body: text('body'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    actorUserId: uuid('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('client_timeline_entries_client_idx').on(
+      table.clientId,
+      table.occurredAt,
+    ),
+  ],
+);
+
+export const invoices = pgTable(
+  'invoices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'restrict' }),
+    proposalId: uuid('proposal_id').references(() => proposals.id, {
+      onDelete: 'set null',
+    }),
+    proposalVersionId: uuid('proposal_version_id').references(
+      () => proposalVersions.id,
+      { onDelete: 'set null' },
+    ),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    engagementId: uuid('engagement_id').references(
+      () => serviceEngagements.id,
+      { onDelete: 'set null' },
+    ),
+    source: invoiceSource('source').notNull().default('manual'),
+    // Identifies the record an invoice was generated from (a proposal version
+    // or an engagement). The workspace/source/sourceId index blocks duplicate
+    // issuance while NULLs keep manual invoices unconstrained.
+    sourceId: uuid('source_id'),
+    currency: text('currency').notNull().default('INR'),
+    invoiceDate: timestamp('invoice_date', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    dueDate: timestamp('due_date', { withTimezone: true, mode: 'date' }),
+    status: invoiceStatus('status').notNull().default('draft'),
+    subtotalCents: integer('subtotal_cents').notNull().default(0),
+    discountCents: integer('discount_cents').notNull().default(0),
+    taxCents: integer('tax_cents').notNull().default(0),
+    totalCents: integer('total_cents').notNull().default(0),
+    cgstCents: integer('cgst_cents').notNull().default(0),
+    sgstCents: integer('sgst_cents').notNull().default(0),
+    igstCents: integer('igst_cents').notNull().default(0),
+    amountPaidCents: integer('amount_paid_cents').notNull().default(0),
+    balanceDueCents: integer('balance_due_cents').notNull().default(0),
+    notes: text('notes'),
+    terms: text('terms'),
+    approvedByUserId: uuid('approved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at', { withTimezone: true, mode: 'date' }),
+    issuedByUserId: uuid('issued_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    issuedAt: timestamp('issued_at', { withTimezone: true, mode: 'date' }),
+    cancelledByUserId: uuid('cancelled_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true, mode: 'date' }),
+    cancellationReason: text('cancellation_reason'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('invoices_workspace_reference_unique').on(
+      table.workspaceId,
+      table.reference,
+    ),
+    uniqueIndex('invoices_workspace_source_unique').on(
+      table.workspaceId,
+      table.source,
+      table.sourceId,
+    ),
+    index('invoices_workspace_status_idx').on(table.workspaceId, table.status),
+    index('invoices_workspace_due_idx').on(table.workspaceId, table.dueDate),
+    index('invoices_workspace_client_idx').on(table.workspaceId, table.clientId),
+    index('invoices_workspace_project_idx').on(
+      table.workspaceId,
+      table.projectId,
+    ),
+  ],
+);
+
+export const invoiceLineItems = pgTable(
+  'invoice_line_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => invoices.id, { onDelete: 'cascade' }),
+    description: text('description').notNull(),
+    quantity: integer('quantity').notNull().default(1),
+    unitPriceCents: integer('unit_price_cents').notNull().default(0),
+    discountType: proposalDiscountType('discount_type')
+      .notNull()
+      .default('none'),
+    discountValue: integer('discount_value').notNull().default(0),
+    taxScheme: proposalTaxScheme('tax_scheme').notNull().default('none'),
+    taxRateBps: integer('tax_rate_bps').notNull().default(0),
+    lineSubtotalCents: integer('line_subtotal_cents').notNull().default(0),
+    lineDiscountCents: integer('line_discount_cents').notNull().default(0),
+    lineNetCents: integer('line_net_cents').notNull().default(0),
+    lineTaxCents: integer('line_tax_cents').notNull().default(0),
+    lineTotalCents: integer('line_total_cents').notNull().default(0),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('invoice_line_items_invoice_order_idx').on(
+      table.invoiceId,
+      table.displayOrder,
+    ),
+    index('invoice_line_items_workspace_idx').on(table.workspaceId),
+  ],
+);
+
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => invoices.id, { onDelete: 'restrict' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'restrict' }),
+    paymentDate: timestamp('payment_date', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    method: paymentMethod('method').notNull().default('bank_transfer'),
+    transactionReference: text('transaction_reference'),
+    notes: text('notes'),
+    recordedByUserId: uuid('recorded_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('payments_workspace_reference_unique').on(
+      table.workspaceId,
+      table.reference,
+    ),
+    uniqueIndex('payments_workspace_transaction_unique').on(
+      table.workspaceId,
+      table.transactionReference,
+    ),
+    index('payments_workspace_date_idx').on(
+      table.workspaceId,
+      table.paymentDate,
+    ),
+    index('payments_invoice_idx').on(table.invoiceId, table.createdAt),
+  ],
+);
+
+export const expenses = pgTable(
+  'expenses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    reference: text('reference').notNull(),
+    category: text('category').notNull(),
+    description: text('description').notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    currency: text('currency').notNull().default('INR'),
+    expenseDate: timestamp('expense_date', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    vendor: text('vendor'),
+    receiptReference: text('receipt_reference'),
+    status: expenseStatus('status').notNull().default('pending_approval'),
+    recordedByUserId: uuid('recorded_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true, mode: 'date' }),
+    decisionNotes: text('decision_notes'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('expenses_workspace_reference_unique').on(
+      table.workspaceId,
+      table.reference,
+    ),
+    index('expenses_workspace_status_idx').on(table.workspaceId, table.status),
+    index('expenses_workspace_date_idx').on(
+      table.workspaceId,
+      table.expenseDate,
+    ),
+    index('expenses_workspace_project_idx').on(
+      table.workspaceId,
+      table.projectId,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Phase 2E — workspace knowledge, document ingestion and AI memory
+// ---------------------------------------------------------------------------
+
+export const knowledgeCategory = pgEnum('knowledge_category', [
+  'company_profile',
+  'services',
+  'processes',
+  'brand_voice',
+  'pricing',
+  'policies',
+  'sales',
+  'marketing',
+  'client_specific',
+  'project_specific',
+  'reference',
+  'other',
+]);
+
+export const knowledgeStatus = pgEnum('knowledge_status', [
+  'draft',
+  'published',
+  'archived',
+]);
+
+export const knowledgeProvenance = pgEnum('knowledge_provenance', [
+  'verified',
+  'source_derived',
+  'ai_generated',
+  'unverified',
+]);
+
+export const knowledgeSourceType = pgEnum('knowledge_source_type', [
+  'manual',
+  'document',
+  'import',
+  'agent_summary',
+]);
+
+export const knowledgeDocumentStatus = pgEnum('knowledge_document_status', [
+  'processing',
+  'processed',
+  'failed',
+]);
+
+export const memoryType = pgEnum('memory_type', [
+  'workspace',
+  'company',
+  'client',
+  'project',
+  'decision',
+  'preference',
+  'workflow',
+  'agent',
+]);
+
+export const memoryStatus = pgEnum('memory_status', [
+  'active',
+  'archived',
+  'superseded',
+]);
+
+export const memoryConfidence = pgEnum('memory_confidence', [
+  'low',
+  'medium',
+  'high',
+]);
+
+export const knowledgeEntries = pgTable(
+  'knowledge_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    category: knowledgeCategory('category').notNull().default('other'),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    content: text('content').notNull(),
+    tags: jsonb('tags').notNull().default([]),
+    sourceType: knowledgeSourceType('source_type').notNull().default('manual'),
+    sourceReference: text('source_reference'),
+    provenance: knowledgeProvenance('provenance').notNull().default('unverified'),
+    status: knowledgeStatus('status').notNull().default('draft'),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'set null',
+    }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    version: integer('version').notNull().default(1),
+    contentHash: text('content_hash').notNull(),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' }),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('knowledge_entries_workspace_hash_unique')
+      .on(table.workspaceId, table.contentHash)
+      .where(sql`${table.archivedAt} is null`),
+    index('knowledge_entries_workspace_category_idx').on(
+      table.workspaceId,
+      table.category,
+    ),
+    index('knowledge_entries_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('knowledge_entries_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('knowledge_entries_workspace_project_idx').on(
+      table.workspaceId,
+      table.projectId,
+    ),
+    index('knowledge_entries_search_idx').using(
+      'gin',
+      sql`to_tsvector('english', coalesce(${table.title}, '') || ' ' || coalesce(${table.summary}, '') || ' ' || ${table.content})`,
+    ),
+  ],
+);
+
+export const knowledgeVersions = pgTable(
+  'knowledge_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    entryId: uuid('entry_id')
+      .notNull()
+      .references(() => knowledgeEntries.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    category: knowledgeCategory('category').notNull(),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    content: text('content').notNull(),
+    tags: jsonb('tags').notNull().default([]),
+    provenance: knowledgeProvenance('provenance').notNull(),
+    status: knowledgeStatus('status').notNull(),
+    changedByUserId: uuid('changed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    changeNote: text('change_note'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('knowledge_versions_entry_version_unique').on(
+      table.entryId,
+      table.version,
+    ),
+    index('knowledge_versions_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const knowledgeDocuments = pgTable(
+  'knowledge_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    entryId: uuid('entry_id').references(() => knowledgeEntries.id, {
+      onDelete: 'set null',
+    }),
+    filename: text('filename').notNull(),
+    mimeType: text('mime_type').notNull(),
+    format: text('format').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    checksum: text('checksum').notNull(),
+    status: knowledgeDocumentStatus('status').notNull().default('processing'),
+    errorMessage: text('error_message'),
+    rawText: text('raw_text'),
+    chunkCount: integer('chunk_count').notNull().default(0),
+    version: integer('version').notNull().default(1),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    processedAt: timestamp('processed_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('knowledge_documents_workspace_checksum_unique').on(
+      table.workspaceId,
+      table.checksum,
+    ),
+    index('knowledge_documents_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('knowledge_documents_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const knowledgeChunks = pgTable(
+  'knowledge_chunks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    entryId: uuid('entry_id')
+      .notNull()
+      .references(() => knowledgeEntries.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id').references(() => knowledgeDocuments.id, {
+      onDelete: 'set null',
+    }),
+    chunkIndex: integer('chunk_index').notNull(),
+    heading: text('heading'),
+    content: text('content').notNull(),
+    charCount: integer('char_count').notNull(),
+    tokenEstimate: integer('token_estimate').notNull().default(0),
+    contentHash: text('content_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('knowledge_chunks_entry_chunk_unique').on(
+      table.entryId,
+      table.chunkIndex,
+    ),
+    index('knowledge_chunks_workspace_entry_idx').on(
+      table.workspaceId,
+      table.entryId,
+    ),
+    index('knowledge_chunks_workspace_document_idx').on(
+      table.workspaceId,
+      table.documentId,
+    ),
+    index('knowledge_chunks_search_idx').using(
+      'gin',
+      sql`to_tsvector('english', ${table.content})`,
+    ),
+  ],
+);
+
+export const aiMemories = pgTable(
+  'ai_memories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    memoryType: memoryType('memory_type').notNull(),
+    key: text('key').notNull(),
+    content: text('content').notNull(),
+    sourceType: knowledgeSourceType('source_type').notNull().default('manual'),
+    sourceReference: text('source_reference'),
+    sourceEntryId: uuid('source_entry_id').references(
+      () => knowledgeEntries.id,
+      { onDelete: 'set null' },
+    ),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'set null',
+    }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    agentId: uuid('agent_id').references(() => agents.id, {
+      onDelete: 'set null',
+    }),
+    status: memoryStatus('status').notNull().default('active'),
+    confidence: memoryConfidence('confidence').notNull().default('medium'),
+    verified: boolean('verified').notNull().default(false),
+    version: integer('version').notNull().default(1),
+    supersedesId: uuid('supersedes_id'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('ai_memories_workspace_key_unique')
+      .on(table.workspaceId, table.memoryType, table.key)
+      .where(sql`${table.status} = 'active'`),
+    index('ai_memories_workspace_type_status_idx').on(
+      table.workspaceId,
+      table.memoryType,
+      table.status,
+    ),
+    index('ai_memories_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('ai_memories_workspace_project_idx').on(
+      table.workspaceId,
+      table.projectId,
+    ),
+  ],
+);
+
+export const aiMemoryVersions = pgTable(
+  'ai_memory_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    memoryId: uuid('memory_id')
+      .notNull()
+      .references(() => aiMemories.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    key: text('key').notNull(),
+    content: text('content').notNull(),
+    confidence: memoryConfidence('confidence').notNull(),
+    verified: boolean('verified').notNull().default(false),
+    status: memoryStatus('status').notNull(),
+    changedByUserId: uuid('changed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    changeNote: text('change_note'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('ai_memory_versions_memory_version_unique').on(
+      table.memoryId,
+      table.version,
+    ),
+    index('ai_memory_versions_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Phase 2G — marketing and website execution engine
+// ---------------------------------------------------------------------------
+
+// Campaign, content and proposal lifecycles share the same vocabulary so the
+// agency can tell a plan from a draft, an approval from an execution.
+export const marketingCampaignStatus = pgEnum('marketing_campaign_status', [
+  'planned',
+  'draft',
+  'awaiting_review',
+  'approved',
+  'scheduled',
+  'executed',
+  'failed',
+  'cancelled',
+]);
+
+export const marketingContentStatus = pgEnum('marketing_content_status', [
+  'idea',
+  'draft',
+  'in_review',
+  'changes_requested',
+  'approved',
+  'scheduled',
+  'published',
+  'failed',
+  'cancelled',
+]);
+
+export const marketingProposalStatus = pgEnum('marketing_proposal_status', [
+  'draft',
+  'awaiting_review',
+  'approved',
+  'rejected',
+  'executing',
+  'executed',
+  'cancelled',
+]);
+
+// Every reported number carries where it came from. An estimate is never shown
+// as a verified analytics figure.
+export const marketingMetricSource = pgEnum('marketing_metric_source', [
+  'manual',
+  'imported',
+  'calculated',
+  'ai_estimate',
+]);
+
+// One marketing profile per client. It is configuration only: it never creates
+// a second client record and it cascades with the client it belongs to.
+export const marketingProfiles = pgTable(
+  'marketing_profiles',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    businessDescription: text('business_description'),
+    industry: text('industry'),
+    targetAudience: text('target_audience'),
+    targetLocations: jsonb('target_locations').notNull().default([]),
+    serviceAreas: jsonb('service_areas').notNull().default([]),
+    websiteUrl: text('website_url'),
+    businessGoals: text('business_goals'),
+    competitors: text('competitors'),
+    brandVoice: text('brand_voice'),
+    communicationGuidelines: text('communication_guidelines'),
+    contentLanguage: text('content_language').notNull().default('en'),
+    marketingNotes: text('marketing_notes'),
+    availableServices: jsonb('available_services').notNull().default([]),
+    selectedServices: jsonb('selected_services').notNull().default([]),
+    status: text('status').notNull().default('active'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('marketing_profiles_workspace_client_unique').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('marketing_profiles_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+  ],
+);
+
+export const marketingCampaigns = pgTable(
+  'marketing_campaigns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    name: text('name').notNull(),
+    objective: text('objective'),
+    objectiveDescription: text('objective_description'),
+    targetAudience: text('target_audience'),
+    targetGeography: text('target_geography'),
+    channel: text('channel').notNull(),
+    startDate: timestamp('start_date', { withTimezone: true, mode: 'date' }),
+    endDate: timestamp('end_date', { withTimezone: true, mode: 'date' }),
+    budgetEstimate: integer('budget_estimate').notNull().default(0),
+    currency: text('currency').notNull().default('INR'),
+    successMetrics: text('success_metrics'),
+    status: marketingCampaignStatus('status').notNull().default('planned'),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    clientApprovalStatus: clientApprovalStatus('client_approval_status')
+      .notNull()
+      .default('not_requested'),
+    notes: text('notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('marketing_campaigns_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('marketing_campaigns_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('marketing_campaigns_workspace_owner_idx').on(
+      table.workspaceId,
+      table.ownerUserId,
+    ),
+  ],
+);
+
+export const marketingContentItems = pgTable(
+  'marketing_content_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id').references(() => marketingCampaigns.id, {
+      onDelete: 'set null',
+    }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    contentType: text('content_type').notNull(),
+    title: text('title').notNull(),
+    targetAudience: text('target_audience'),
+    targetKeyword: text('target_keyword'),
+    targetPlatform: text('target_platform'),
+    language: text('language').notNull().default('en'),
+    status: marketingContentStatus('status').notNull().default('draft'),
+    latestVersion: integer('latest_version').notNull().default(1),
+    approvedVersion: integer('approved_version'),
+    generationSource: text('generation_source').notNull().default('manual'),
+    agentRunId: uuid('agent_run_id').references(() => agentRuns.id, {
+      onDelete: 'set null',
+    }),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    scheduledFor: timestamp('scheduled_for', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    dueDate: timestamp('due_date', { withTimezone: true, mode: 'date' }),
+    reviewFeedback: text('review_feedback'),
+    reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true, mode: 'date' }),
+    publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' }),
+    publishNote: text('publish_note'),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('marketing_content_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('marketing_content_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('marketing_content_workspace_campaign_idx').on(
+      table.workspaceId,
+      table.campaignId,
+    ),
+    index('marketing_content_workspace_scheduled_idx').on(
+      table.workspaceId,
+      table.scheduledFor,
+    ),
+  ],
+);
+
+// Versions are append-only. An approved version is never overwritten; edits and
+// regenerations create the next version so the history stays intact.
+export const marketingContentVersions = pgTable(
+  'marketing_content_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    contentItemId: uuid('content_item_id')
+      .notNull()
+      .references(() => marketingContentItems.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    body: text('body').notNull(),
+    generationSource: text('generation_source').notNull().default('manual'),
+    aiMetadata: jsonb('ai_metadata'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    changeNote: text('change_note'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('marketing_content_versions_item_version_unique').on(
+      table.contentItemId,
+      table.version,
+    ),
+    index('marketing_content_versions_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const marketingWebsitePages = pgTable(
+  'marketing_website_pages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    pageTitle: text('page_title').notNull(),
+    pageUrl: text('page_url').notNull(),
+    pageType: text('page_type'),
+    pageObjective: text('page_objective'),
+    existingContentNotes: text('existing_content_notes'),
+    seoTitle: text('seo_title'),
+    metaDescription: text('meta_description'),
+    ctaRecommendations: text('cta_recommendations'),
+    mediaRequirements: text('media_requirements'),
+    internalLinkRecommendations: text('internal_link_recommendations'),
+    status: text('status').notNull().default('active'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('marketing_website_pages_workspace_client_url_unique').on(
+      table.workspaceId,
+      table.clientId,
+      table.pageUrl,
+    ),
+    index('marketing_website_pages_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+  ],
+);
+
+export const marketingWebsiteProposals = pgTable(
+  'marketing_website_proposals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    pageId: uuid('page_id').references(() => marketingWebsitePages.id, {
+      onDelete: 'set null',
+    }),
+    title: text('title').notNull(),
+    // currentContent is the observed original. It is written once and never
+    // replaced, so the proposal always keeps the before state.
+    currentContent: text('current_content'),
+    proposedContent: text('proposed_content'),
+    status: marketingProposalStatus('status').notNull().default('draft'),
+    latestVersion: integer('latest_version').notNull().default(1),
+    reviewNotes: text('review_notes'),
+    rejectionFeedback: text('rejection_feedback'),
+    ownerUserId: uuid('owner_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedByUserId: uuid('approved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedAt: timestamp('approved_at', { withTimezone: true, mode: 'date' }),
+    executedByUserId: uuid('executed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    executedAt: timestamp('executed_at', { withTimezone: true, mode: 'date' }),
+    executionEvidence: text('execution_evidence'),
+    executionNotes: text('execution_notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('marketing_website_proposals_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('marketing_website_proposals_workspace_client_idx').on(
+      table.workspaceId,
+      table.clientId,
+    ),
+    index('marketing_website_proposals_page_idx').on(table.pageId),
+  ],
+);
+
+export const marketingWebsiteProposalVersions = pgTable(
+  'marketing_website_proposal_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    proposalId: uuid('proposal_id')
+      .notNull()
+      .references(() => marketingWebsiteProposals.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    body: text('body').notNull(),
+    generationSource: text('generation_source').notNull().default('manual'),
+    aiMetadata: jsonb('ai_metadata'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    changeNote: text('change_note'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('marketing_proposal_versions_proposal_version_unique').on(
+      table.proposalId,
+      table.version,
+    ),
+    index('marketing_proposal_versions_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const marketingMetrics = pgTable(
+  'marketing_metrics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id').references(() => marketingCampaigns.id, {
+      onDelete: 'set null',
+    }),
+    metricKey: text('metric_key').notNull(),
+    value: doublePrecision('value').notNull().default(0),
+    source: marketingMetricSource('source').notNull().default('manual'),
+    periodStart: timestamp('period_start', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    periodEnd: timestamp('period_end', { withTimezone: true, mode: 'date' })
+      .notNull(),
+    notes: text('notes'),
+    recordedByUserId: uuid('recorded_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('marketing_metrics_workspace_client_period_idx').on(
+      table.workspaceId,
+      table.clientId,
+      table.periodStart,
+    ),
+    index('marketing_metrics_workspace_campaign_idx').on(
+      table.workspaceId,
+      table.campaignId,
+    ),
+  ],
+);
+
+export const marketingReports = pgTable(
+  'marketing_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    title: text('title').notNull(),
+    periodStart: timestamp('period_start', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    periodEnd: timestamp('period_end', { withTimezone: true, mode: 'date' })
+      .notNull(),
+    summary: text('summary'),
+    dataSnapshot: jsonb('data_snapshot'),
+    dataSources: jsonb('data_sources'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('marketing_reports_workspace_client_created_idx').on(
+      table.workspaceId,
+      table.clientId,
+      table.createdAt,
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Phase 2H — integrations, webhooks, approval-gated execution and automation
+// ---------------------------------------------------------------------------
+
+export const integrationStatus = pgEnum('integration_status', [
+  'not_configured',
+  'configured',
+  'error',
+  'disconnected',
+]);
+
+export const executionStatus = pgEnum('execution_status', [
+  'proposed',
+  'awaiting_approval',
+  'approved',
+  'rejected',
+  'queued',
+  'executing',
+  'completed',
+  'failed',
+  'cancelled',
+]);
+
+export const webhookEventStatus = pgEnum('webhook_event_status', [
+  'received',
+  'processing',
+  'processed',
+  'failed',
+  'ignored',
+]);
+
+export const workflowRunStatus = pgEnum('workflow_run_status', [
+  'queued',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+]);
+
+export const integrations = pgTable(
+  'integrations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    provider: text('provider').notNull(),
+    name: text('name').notNull(),
+    status: integrationStatus('status').notNull().default('not_configured'),
+    capabilities: jsonb('capabilities').notNull().default([]),
+    // Non-secret metadata only (labels, URLs, selected account names).
+    // Credentials live in environment configuration and are never persisted.
+    settings: jsonb('settings'),
+    connectedByUserId: uuid('connected_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true, mode: 'date' }),
+    lastErrorAt: timestamp('last_error_at', { withTimezone: true, mode: 'date' }),
+    lastErrorMessage: text('last_error_message'),
+    disconnectedAt: timestamp('disconnected_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('integrations_workspace_kind_provider_unique').on(
+      table.workspaceId,
+      table.kind,
+      table.provider,
+    ),
+    index('integrations_workspace_kind_idx').on(
+      table.workspaceId,
+      table.kind,
+    ),
+  ],
+);
+
+export const integrationSyncEvents = pgTable(
+  'integration_sync_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'set null',
+    }),
+    direction: text('direction').notNull(),
+    eventType: text('event_type').notNull(),
+    source: text('source').notNull(),
+    status: text('status').notNull().default('recorded'),
+    externalId: text('external_id'),
+    idempotencyKey: text('idempotency_key'),
+    summary: jsonb('summary'),
+    errorMessage: text('error_message'),
+    actorUserId: uuid('actor_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('integration_sync_events_workspace_idempotency_unique')
+      .on(table.workspaceId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} is not null`),
+    index('integration_sync_events_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const webhookEvents = pgTable(
+  'webhook_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'set null',
+    }),
+    provider: text('provider').notNull(),
+    eventType: text('event_type').notNull(),
+    externalEventId: text('external_event_id'),
+    idempotencyKey: text('idempotency_key').notNull(),
+    signatureValid: boolean('signature_valid').notNull().default(false),
+    status: webhookEventStatus('status').notNull().default('received'),
+    payload: jsonb('payload'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    errorMessage: text('error_message'),
+    receivedAt: timestamp('received_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp('processed_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('webhook_events_workspace_idempotency_unique').on(
+      table.workspaceId,
+      table.idempotencyKey,
+    ),
+    index('webhook_events_workspace_status_created_idx').on(
+      table.workspaceId,
+      table.status,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const executionRequests = pgTable(
+  'execution_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'set null',
+    }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'set null',
+    }),
+    category: text('category').notNull(),
+    operation: text('operation').notNull(),
+    targetSystem: text('target_system').notNull(),
+    payload: jsonb('payload'),
+    riskLevel: text('risk_level').notNull().default('medium'),
+    requiredPermission: text('required_permission').notNull(),
+    status: executionStatus('status').notNull().default('proposed'),
+    requestedByUserId: uuid('requested_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approverUserId: uuid('approver_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    decisionNote: text('decision_note'),
+    decidedAt: timestamp('decided_at', { withTimezone: true, mode: 'date' }),
+    queuedAt: timestamp('queued_at', { withTimezone: true, mode: 'date' }),
+    executionStartedAt: timestamp('execution_started_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    executedAt: timestamp('executed_at', { withTimezone: true, mode: 'date' }),
+    evidence: text('evidence'),
+    resultSummary: text('result_summary'),
+    failureReason: text('failure_reason'),
+    idempotencyKey: text('idempotency_key'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('execution_requests_workspace_idempotency_unique')
+      .on(table.workspaceId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} is not null`),
+    index('execution_requests_workspace_status_created_idx').on(
+      table.workspaceId,
+      table.status,
+      table.createdAt,
+    ),
+    index('execution_requests_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const workflowRuns = pgTable(
+  'workflow_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    workflowKey: text('workflow_key').notNull(),
+    trigger: text('trigger').notNull().default('manual'),
+    status: workflowRunStatus('status').notNull().default('queued'),
+    input: jsonb('input'),
+    result: jsonb('result'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    idempotencyKey: text('idempotency_key'),
+    startedByUserId: uuid('started_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('workflow_runs_workspace_idempotency_unique')
+      .on(table.workspaceId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} is not null`),
+    index('workflow_runs_workspace_status_created_idx').on(
+      table.workspaceId,
+      table.status,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const workflowRunSteps = pgTable(
+  'workflow_run_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: 'cascade' }),
+    stepKey: text('step_key').notNull(),
+    label: text('label').notNull(),
+    status: text('status').notNull().default('completed'),
+    detail: jsonb('detail'),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('workflow_run_steps_run_created_idx').on(table.runId, table.createdAt),
   ],
 );

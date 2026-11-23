@@ -59,6 +59,10 @@ import {
   OPPORTUNITY_STAGE_META,
   REQUIREMENT_STATUS_META,
 } from '@/components/workspace/phase2d/meta';
+import {
+  formatMoney as formatProposalMoney,
+  statusMeta as proposalStatusMeta,
+} from '@/components/workspace/proposals/meta';
 import DiscoveryForm from './DiscoveryForm';
 import OpportunityForm from './OpportunityForm';
 import RequirementForm from './RequirementForm';
@@ -84,6 +88,10 @@ export default function OpportunityDetailView({
   canEditRequirements,
   canViewRequirements,
   canRunAi,
+  proposals = [],
+  canViewProposals = false,
+  canCreateProposal = false,
+  canExportProposal = false,
 }) {
   const router = useRouter();
   const { opportunity } = detail;
@@ -721,6 +729,92 @@ export default function OpportunityDetailView({
         </>
       ) : null}
 
+      {canViewProposals ? (
+        <Card>
+          <CardHead>
+            <div>
+              <CardTitle>Proposals</CardTitle>
+              <CardText>
+                Every proposal linked to this opportunity. A proposal can be
+                accepted or rejected on its own; the opportunity stage never
+                changes automatically.
+              </CardText>
+            </div>
+            <Actions>
+              {canCreateProposal ? (
+                <LinkButton
+                  href={`/workspace/proposals/new?opportunityId=${opportunity.id}`}
+                  $variant="primary"
+                >
+                  <Plus size={14} />
+                  New proposal
+                </LinkButton>
+              ) : null}
+            </Actions>
+          </CardHead>
+
+          {proposals.length === 0 ? (
+            <Hint>
+              No proposals yet. Creating one prefills from approved discovery
+              and confirmed requirements, and prices always start at zero.
+            </Hint>
+          ) : (
+            <TableWrap>
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Proposal</th>
+                    <th>Status</th>
+                    <th>Version</th>
+                    <th>One-time total</th>
+                    <th>Monthly</th>
+                    <th>Valid until</th>
+                    <th>Updated</th>
+                    {canExportProposal ? <th /> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {proposals.map((entry) => {
+                    const status = proposalStatusMeta(entry.displayStatus);
+                    const currency = entry.versionCurrency || entry.currency || 'INR';
+                    return (
+                      <tr key={entry.id}>
+                        <td>
+                          <Link href={`/workspace/proposals/${entry.id}`}>
+                            {entry.title}
+                          </Link>
+                          <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                            {entry.reference}
+                          </div>
+                        </td>
+                        <td>
+                          <Badge $tone={status.tone}>{status.label}</Badge>
+                        </td>
+                        <td>v{entry.versionNumber}</td>
+                        <td>{formatProposalMoney(entry.oneTimeTotalCents, currency)}</td>
+                        <td>{formatProposalMoney(entry.recurringMonthlyCents, currency)}</td>
+                        <td>{formatDate(entry.validityDate, timezone)}</td>
+                        <td>{formatDateTime(entry.updatedAt, timezone)}</td>
+                        {canExportProposal ? (
+                          <td>
+                            <Link
+                              href={`/workspace/proposals/${entry.id}/preview`}
+                              target="_blank"
+                            >
+                              Preview
+                            </Link>
+                          </td>
+                        ) : null}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </TableWrap>
+          )}
+        </Card>
+      ) : null}
+
       {canRunAi ? (
         <Card>
           <CardHead>
@@ -882,9 +976,9 @@ export default function OpportunityDetailView({
       </Grid>
 
       <Hint>
-        Closing an opportunity records pipeline outcome only. Client conversion,
-        proposals, contracts, payments and projects belong to later 2D stages and
-        are never automatic.
+        Closing an opportunity records pipeline outcome only. Proposals are
+        tracked separately, and contracts, payments and projects remain for
+        later 2D stages. Nothing here converts automatically.
       </Hint>
     </Page>
   );

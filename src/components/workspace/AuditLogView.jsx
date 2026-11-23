@@ -402,7 +402,7 @@ export default function AuditLogView({ timezone }) {
         <Title>Audit log</Title>
         <Lead>
           Workspace-scoped record of authentication, invitation, membership,
-          workspace and future module events. Sensitive values are removed
+          workspace and module events. Sensitive values are removed
           before an entry is stored.
         </Lead>
       </Header>

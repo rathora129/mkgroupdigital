@@ -31,6 +31,35 @@ export const AUDIT_CATEGORY_LABELS = {
 export const AUDIT_DEFAULT_MAX_PAGES = 5;
 export const AUDIT_MAX_PAGES_LIMIT = 10;
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value) {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+const emptyToNull = (value) =>
+  typeof value === 'string' && value.trim() === '' ? null : value;
+
+const uuidField = (message) =>
+  yup
+    .string()
+    .trim()
+    .transform(emptyToNull)
+    .test('uuid', message, (value) => value === undefined || value === null || isUuid(value))
+    .nullable();
+
+const dateField = (message) =>
+  yup
+    .date()
+    .transform((value, original) => (original === '' ? null : value))
+    .typeError(message)
+    .nullable();
+
+const nullableText = (max, message) =>
+  yup.string().trim().transform(emptyToNull).max(max, message).nullable();
+
+
 export function normalizeAuditUrl(value) {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
@@ -70,6 +99,25 @@ export const websiteAuditCreateSchema = yup.object({
       `Audits can scan at most ${AUDIT_MAX_PAGES_LIMIT} pages.`,
     )
     .default(AUDIT_DEFAULT_MAX_PAGES),
+  clientId: uuidField('Choose a client in this workspace.'),
+  projectId: uuidField('Choose a project in this workspace.'),
+  auditDate: dateField('Enter a valid audit date.'),
+  notes: nullableText(6_000, 'Notes must be 6,000 characters or fewer.'),
+  checklist: yup
+    .mixed()
+    .nullable()
+    .test(
+      'checklist-object',
+      'Manual checklist must be an object.',
+      (value) =>
+        value === undefined ||
+        value === null ||
+        (typeof value === 'object' && !Array.isArray(value)),
+    ),
+  captureMode: yup
+    .string()
+    .oneOf(['engine', 'manual'], 'Choose how this audit is captured.')
+    .default('engine'),
 });
 
 export const websiteAuditQuerySchema = yup.object({

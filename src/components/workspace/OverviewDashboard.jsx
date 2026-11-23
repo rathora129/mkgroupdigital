@@ -5,20 +5,25 @@ import {
   Activity,
   ArrowUpRight,
   BadgeCheck,
+  BookOpen,
   Bot,
+  Building2,
   ChevronRight,
   CircleAlert,
+  FileText,
+  FolderKanban,
   Globe2,
   Inbox,
   Layers,
+  LifeBuoy,
   Search,
   Sparkles,
   Target,
   Users,
+  Wallet,
 } from 'lucide-react';
 import styled from 'styled-components';
 import { workspaceMedia } from '@/styles/workspaceTheme';
-import { workspaceSections } from '@/data/workspace';
 import {
   formatCents,
   formatDateTime,
@@ -26,6 +31,7 @@ import {
   statusMeta,
 } from '@/lib/ai/format';
 import { formatValue } from '@/components/workspace/phase2c/meta';
+import { formatMoney as formatProposalMoney } from '@/components/workspace/proposals/meta';
 import SystemStatus from './SystemStatus';
 
 const Page = styled.div`
@@ -227,6 +233,7 @@ const TwoCol = styled.div`
 const Panel = styled.section`
   display: flex;
   flex-direction: column;
+  min-width: 0;
   gap: 14px;
   padding: 20px;
   border-radius: ${({ theme }) => theme.radius.lg};
@@ -340,6 +347,11 @@ const StatusBadge = styled.span`
   white-space: nowrap;
 `;
 
+const RunScroll = styled.div`
+  min-width: 0;
+  overflow-x: auto;
+`;
+
 const RunTable = styled.table`
   width: 100%;
   border-collapse: collapse;
@@ -408,21 +420,28 @@ const ModuleCard = styled(Link)`
   }
 `;
 
-const PLANNED_MODULES = ['tasks', 'projects', 'finance', 'memory'];
-
 export default function OverviewDashboard({
   userName,
   overview,
   leadOverview,
   opportunityOverview,
+  proposalOverview,
   researchOverview,
   auditOverview,
+  projectOverview,
+  clientOverview,
+  financeOverview,
   canViewAi,
   canViewLeads,
   canViewOpportunities,
   canViewServices,
+  canViewProposals,
   canViewResearch,
   canViewAudits,
+  canViewProjects,
+  canViewClients,
+  canViewFinance,
+  canViewMemory,
   canReview,
   canViewAudit,
   timezone,
@@ -433,8 +452,12 @@ export default function OverviewDashboard({
     canViewLeads ||
     canViewOpportunities ||
     canViewServices ||
+    canViewProposals ||
     canViewResearch ||
-    canViewAudits;
+    canViewAudits ||
+    canViewProjects ||
+    canViewClients ||
+    canViewFinance;
 
   return (
     <Page>
@@ -442,17 +465,16 @@ export default function OverviewDashboard({
         <WelcomeCard>
           <Badge>
             <Sparkles size={12} aria-hidden="true" />
-            2D-A · Opportunities &amp; Catalogue
+            Phase 2H · Integration &amp; Automation
           </Badge>
           <WelcomeTitle id="welcome-title">
             {firstName ? `Welcome back, ${firstName}` : 'Welcome to your workspace'}
           </WelcomeTitle>
           <WelcomeText>
-            Phase 2D-A adds a sales pipeline on top of the lead CRM and a
-            configurable service catalogue. Opportunities track stages, expected
-            value and structured discovery without converting leads
-            automatically. Proposals, contracts, payments, projects and
-            retainers remain planned for later 2D sub-stages.
+            Integrations, approvals and automations now share one audited
+            operational layer. External actions stay disabled until credentials
+            exist, and every consequential action still needs an explicit human
+            approval before the worker touches it.
           </WelcomeText>
           <Actions>
             {canViewAi ? (
@@ -561,6 +583,58 @@ export default function OverviewDashboard({
                 <StatNote>Categories, services and regulated review</StatNote>
               </StatCard>
             ) : null}
+            {canViewProposals && proposalOverview ? (
+              <StatCard href="/workspace/proposals">
+                <StatTop>
+                  <span>Proposals</span>
+                  <FileText size={16} strokeWidth={1.8} aria-hidden="true" />
+                </StatTop>
+                <StatValue>{proposalOverview.total}</StatValue>
+                <StatNote>
+                  {proposalOverview.draft} draft · {proposalOverview.internalReview}{' '}
+                  awaiting review · {proposalOverview.approved + proposalOverview.sent}{' '}
+                  approved or sent
+                </StatNote>
+              </StatCard>
+            ) : null}
+            {canViewProposals && proposalOverview ? (
+              <StatCard href="/workspace/proposals">
+                <StatTop>
+                  <span>Proposal value</span>
+                  <FileText size={16} strokeWidth={1.8} aria-hidden="true" />
+                </StatTop>
+                <StatValue>
+                  {formatProposalMoney(
+                    proposalOverview.proposalValueCents,
+                    proposalOverview.currency,
+                  )}
+                </StatValue>
+                <StatNote>
+                  Approved and sent · not revenue received ·{' '}
+                  {proposalOverview.expiring} expiring soon
+                </StatNote>
+              </StatCard>
+            ) : null}
+            {canViewProposals && proposalOverview ? (
+              <StatCard href="/workspace/proposals?status=accepted">
+                <StatTop>
+                  <span>Accepted proposals</span>
+                  <FileText size={16} strokeWidth={1.8} aria-hidden="true" />
+                </StatTop>
+                <StatValue>{proposalOverview.accepted}</StatValue>
+                <StatNote>
+                  {formatProposalMoney(
+                    proposalOverview.acceptedValueCents,
+                    proposalOverview.currency,
+                  )}{' '}
+                  accepted value · monthly{' '}
+                  {formatProposalMoney(
+                    proposalOverview.recurringMonthlyCents,
+                    proposalOverview.currency,
+                  )}
+                </StatNote>
+              </StatCard>
+            ) : null}
             {canViewResearch && researchOverview ? (
               <StatCard href="/workspace/research">
                 <StatTop>
@@ -588,6 +662,71 @@ export default function OverviewDashboard({
                 <StatNote>
                   {auditOverview.completed} completed · {auditOverview.active}{' '}
                   active
+                </StatNote>
+              </StatCard>
+            ) : null}
+            {canViewProjects && projectOverview ? (
+              <StatCard href="/workspace/projects">
+                <StatTop>
+                  <span>Active projects</span>
+                  <FolderKanban size={16} strokeWidth={1.8} aria-hidden="true" />
+                </StatTop>
+                <StatValue>{projectOverview.active}</StatValue>
+                <StatNote>
+                  {projectOverview.overdueTasks} overdue tasks ·{' '}
+                  {projectOverview.upcomingMilestones} milestones due soon
+                </StatNote>
+              </StatCard>
+            ) : null}
+            {canViewClients && clientOverview ? (
+              <StatCard href="/workspace/clients">
+                <StatTop>
+                  <span>Clients</span>
+                  <Building2 size={16} strokeWidth={1.8} aria-hidden="true" />
+                </StatTop>
+                <StatValue>{clientOverview.total}</StatValue>
+                <StatNote>
+                  {clientOverview.activeEngagements} active engagements ·{' '}
+                  {clientOverview.openTickets} open tickets
+                </StatNote>
+              </StatCard>
+            ) : null}
+            {canViewClients && clientOverview ? (
+              <StatCard href="/workspace/support">
+                <StatTop>
+                  <span>Support</span>
+                  <LifeBuoy size={16} strokeWidth={1.8} aria-hidden="true" />
+                </StatTop>
+                <StatValue>{clientOverview.openTickets}</StatValue>
+                <StatNote>
+                  {clientOverview.overdueTickets} overdue ·{' '}
+                  {clientOverview.upcomingRenewals} renewals in 30 days
+                </StatNote>
+              </StatCard>
+            ) : null}
+            {canViewFinance && financeOverview ? (
+              <StatCard href="/workspace/finance">
+                <StatTop>
+                  <span>Outstanding</span>
+                  <Wallet size={16} strokeWidth={1.8} aria-hidden="true" />
+                </StatTop>
+                <StatValue>
+                  {formatProposalMoney(
+                    financeOverview.totals.outstandingCents,
+                    financeOverview.totals.currency,
+                  )}
+                </StatValue>
+                <StatNote>
+                  {formatProposalMoney(
+                    financeOverview.totals.overdueCents,
+                    financeOverview.totals.currency,
+                  )}{' '}
+                  overdue ·{' '}
+                  {formatProposalMoney(
+                    financeOverview.totals.collectedCents,
+                    financeOverview.totals.currency,
+                  )}{' '}
+                  collected
                 </StatNote>
               </StatCard>
             ) : null}
@@ -691,6 +830,7 @@ export default function OverviewDashboard({
                   </div>
                 </EmptyState>
               ) : (
+                <RunScroll>
                 <RunTable>
                   <thead>
                     <tr>
@@ -730,6 +870,7 @@ export default function OverviewDashboard({
                     })}
                   </tbody>
                 </RunTable>
+                </RunScroll>
               )}
             </Panel>
 
@@ -809,36 +950,6 @@ export default function OverviewDashboard({
 
       <SectionHead>
         <div>
-          <SectionTitle>Not connected in this phase</SectionTitle>
-          <SectionSub>
-            These modules are placeholders. They do not store or display records.
-          </SectionSub>
-        </div>
-      </SectionHead>
-
-      <ModuleGrid>
-        {PLANNED_MODULES.map((key) => {
-          const section = workspaceSections[key];
-          const Icon = section.icon;
-          return (
-            <ModuleCard key={key} href={section.href}>
-              <strong>
-                <span
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
-                >
-                  <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
-                  {section.label}
-                </span>
-                <StatusBadge $tone="muted">Planned</StatusBadge>
-              </strong>
-              <span>{section.description}</span>
-            </ModuleCard>
-          );
-        })}
-      </ModuleGrid>
-
-      <SectionHead>
-        <div>
           <SectionTitle>Quick links</SectionTitle>
         </div>
       </SectionHead>
@@ -886,6 +997,76 @@ export default function OverviewDashboard({
             <span>Categories, services and regulated professional review.</span>
           </ModuleCard>
         ) : null}
+        {canViewProposals ? (
+          <ModuleCard href="/workspace/proposals">
+            <strong>
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+              >
+                <FileText size={15} strokeWidth={1.8} aria-hidden="true" />
+                Proposals
+              </span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </strong>
+            <span>Versioned proposals, approvals, responses and printing.</span>
+          </ModuleCard>
+        ) : null}
+        {canViewProjects ? (
+          <ModuleCard href="/workspace/projects">
+            <strong>
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+              >
+                <FolderKanban size={15} strokeWidth={1.8} aria-hidden="true" />
+                Projects
+              </span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </strong>
+            <span>Delivery projects, tasks, milestones and deliverables.</span>
+          </ModuleCard>
+        ) : null}
+        {canViewClients ? (
+          <ModuleCard href="/workspace/clients">
+            <strong>
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+              >
+                <Building2 size={15} strokeWidth={1.8} aria-hidden="true" />
+                Clients
+              </span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </strong>
+            <span>Client profiles, contacts, engagement history and timeline.</span>
+          </ModuleCard>
+        ) : null}
+        {canViewClients ? (
+          <ModuleCard href="/workspace/support">
+            <strong>
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+              >
+                <LifeBuoy size={15} strokeWidth={1.8} aria-hidden="true" />
+                Support
+              </span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </strong>
+            <span>Client support tickets with internal and client replies.</span>
+          </ModuleCard>
+        ) : null}
+        {canViewFinance ? (
+          <ModuleCard href="/workspace/finance">
+            <strong>
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+              >
+                <Wallet size={15} strokeWidth={1.8} aria-hidden="true" />
+                Finance
+              </span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </strong>
+            <span>Invoices, payments, expenses and currency-safe totals.</span>
+          </ModuleCard>
+        ) : null}
         {canViewResearch ? (
           <ModuleCard href="/workspace/research">
             <strong>
@@ -926,6 +1107,22 @@ export default function OverviewDashboard({
               <ArrowUpRight size={14} aria-hidden="true" />
             </strong>
             <span>Agent roles, providers, models, limits and guardrails.</span>
+          </ModuleCard>
+        ) : null}
+        {canViewMemory ? (
+          <ModuleCard href="/workspace/memory">
+            <strong>
+              <span
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}
+              >
+                <BookOpen size={15} strokeWidth={1.8} aria-hidden="true" />
+                Memory &amp; knowledge
+              </span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </strong>
+            <span>
+              Workspace knowledge, document ingestion and versioned AI memory.
+            </span>
           </ModuleCard>
         ) : null}
         {canReview ? (

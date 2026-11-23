@@ -6,11 +6,19 @@ import { PgBoss } from 'pg-boss';
 export const AI_QUEUE_NAME = 'agent-run';
 export const RESEARCH_QUEUE_NAME = 'research-prepare';
 export const WEBSITE_AUDIT_QUEUE_NAME = 'website-audit';
+export const INTEGRATION_QUEUE_NAME = 'integration-event';
+export const EXECUTION_QUEUE_NAME = 'execution-request';
+export const WORKFLOW_QUEUE_NAME = 'workflow-run';
 export const AI_JOB_RETRY_LIMIT = 2;
 export const AI_JOB_MAX_ATTEMPTS = AI_JOB_RETRY_LIMIT + 1;
 export const AI_JOB_EXPIRE_SECONDS = 240;
 export const PREP_JOB_RETRY_LIMIT = 2;
 export const WEBSITE_AUDIT_RETRY_LIMIT = 1;
+export const INTEGRATION_JOB_RETRY_LIMIT = 2;
+export const INTEGRATION_JOB_MAX_ATTEMPTS = INTEGRATION_JOB_RETRY_LIMIT + 1;
+export const EXECUTION_JOB_RETRY_LIMIT = 1;
+export const WORKFLOW_JOB_RETRY_LIMIT = 1;
+export const WORKFLOW_JOB_MAX_ATTEMPTS = WORKFLOW_JOB_RETRY_LIMIT + 1;
 
 const GLOBAL_KEY = '__mkAiQueueBoss';
 
@@ -39,6 +47,9 @@ async function startQueue() {
   await boss.createQueue(AI_QUEUE_NAME);
   await boss.createQueue(RESEARCH_QUEUE_NAME);
   await boss.createQueue(WEBSITE_AUDIT_QUEUE_NAME);
+  await boss.createQueue(INTEGRATION_QUEUE_NAME);
+  await boss.createQueue(EXECUTION_QUEUE_NAME);
+  await boss.createQueue(WORKFLOW_QUEUE_NAME);
 
   return boss;
 }
@@ -107,6 +118,51 @@ export async function enqueueWebsiteAudit(auditId) {
   );
 }
 
+export async function enqueueWebhookEvent(webhookEventId) {
+  return send(
+    INTEGRATION_QUEUE_NAME,
+    { webhookEventId },
+    {
+      retryLimit: INTEGRATION_JOB_RETRY_LIMIT,
+      retryDelay: 20,
+      retryBackoff: true,
+      expireInSeconds: 120,
+      deleteAfterSeconds: 86_400,
+      singletonKey: webhookEventId,
+    },
+  );
+}
+
+export async function enqueueExecution(executionRequestId) {
+  return send(
+    EXECUTION_QUEUE_NAME,
+    { executionRequestId },
+    {
+      retryLimit: EXECUTION_JOB_RETRY_LIMIT,
+      retryDelay: 20,
+      retryBackoff: true,
+      expireInSeconds: 120,
+      deleteAfterSeconds: 86_400,
+      singletonKey: executionRequestId,
+    },
+  );
+}
+
+export async function enqueueWorkflowRun(runId) {
+  return send(
+    WORKFLOW_QUEUE_NAME,
+    { runId },
+    {
+      retryLimit: WORKFLOW_JOB_RETRY_LIMIT,
+      retryDelay: 20,
+      retryBackoff: true,
+      expireInSeconds: 120,
+      deleteAfterSeconds: 86_400,
+      singletonKey: runId,
+    },
+  );
+}
+
 async function countsFor(boss, queueName) {
   const queue = await boss.getQueue(queueName);
   if (!queue) return null;
@@ -121,12 +177,23 @@ async function countsFor(boss, queueName) {
 
 export async function getQueueCounts() {
   const boss = await getBoss();
-  const [agentRuns, research, websiteAudits] = await Promise.all([
-    countsFor(boss, AI_QUEUE_NAME),
-    countsFor(boss, RESEARCH_QUEUE_NAME),
-    countsFor(boss, WEBSITE_AUDIT_QUEUE_NAME),
-  ]);
-  return { agentRuns, research, websiteAudits };
+  const [agentRuns, research, websiteAudits, integrationEvents, executions, workflows] =
+    await Promise.all([
+      countsFor(boss, AI_QUEUE_NAME),
+      countsFor(boss, RESEARCH_QUEUE_NAME),
+      countsFor(boss, WEBSITE_AUDIT_QUEUE_NAME),
+      countsFor(boss, INTEGRATION_QUEUE_NAME),
+      countsFor(boss, EXECUTION_QUEUE_NAME),
+      countsFor(boss, WORKFLOW_QUEUE_NAME),
+    ]);
+  return {
+    agentRuns,
+    research,
+    websiteAudits,
+    integrationEvents,
+    executions,
+    workflows,
+  };
 }
 
 export async function stopQueue({ graceful = true } = {}) {

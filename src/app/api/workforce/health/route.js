@@ -45,7 +45,7 @@ export async function GET() {
       service: 'mk-ai-workforce',
       shell: 'available',
       phase: 4,
-      phaseLabel: '2D-A · Opportunities & Service Catalogue',
+      phaseLabel: '2H · Integration & Automation',
       checks: {
         database,
         authentication: readiness.ready ? 'configured' : 'incomplete',

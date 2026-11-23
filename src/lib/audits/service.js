@@ -23,6 +23,7 @@ import {
 import { ApiError } from '@/lib/api-error';
 import { recordAudit } from '@/lib/audit';
 import { enqueueWebsiteAudit } from '@/lib/ai/queue';
+import { assertClient, assertProject } from '@/lib/marketing/helpers';
 import { assertSafeUrl, safeFetch } from '@/lib/net/safe-fetch';
 import {
   AuditCancelledError,
@@ -67,6 +68,13 @@ function auditSummary(row) {
     scoringMethod: row.scoringMethod,
     errorMessage: row.errorMessage,
     cancelRequested: row.cancelRequested,
+    clientId: row.clientId,
+    projectId: row.projectId,
+    auditDate: row.auditDate,
+    assignedToUserId: row.assignedToUserId,
+    captureMode: row.captureMode,
+    checklist: row.checklist,
+    notes: row.notes,
     jobId: row.jobId,
     requestedByUserId: row.requestedByUserId,
     requestedByName: row.requestedByName ?? null,
@@ -237,6 +245,58 @@ export async function createWebsiteAudit({
     );
   }
 
+  const client = data.clientId
+    ? await assertClient(workspaceId, data.clientId)
+    : null;
+  const project = data.projectId
+    ? await assertProject(workspaceId, data.projectId, client?.id || null)
+    : null;
+
+  const captureMode = data.captureMode === 'manual' ? 'manual' : 'engine';
+  const auditDate = data.auditDate || new Date();
+
+  // A manual capture records observations and checklists without contacting
+  // the website. It is clearly labelled so it is never mistaken for an
+  // engine-verified crawl.
+  if (captureMode === 'manual') {
+    const rows = await getDb()
+      .insert(websiteAudits)
+      .values({
+        workspaceId,
+        requestedByUserId: userId,
+        requestedUrl: data.url,
+        normalizedUrl: url.href,
+        domain: url.hostname.toLowerCase(),
+        maxPages: data.maxPages ?? 0,
+        pagesScanned: 0,
+        status: 'completed',
+        captureMode: 'manual',
+        clientId: client?.id || null,
+        projectId: project?.id || null,
+        auditDate,
+        notes: data.notes ?? null,
+        checklist: data.checklist ?? null,
+        completedAt: new Date(),
+      })
+      .returning();
+    const audit = rows[0];
+
+    await recordAudit({
+      workspaceId,
+      actorUserId: userId,
+      action: 'website_audit.create',
+      resourceType: 'website_audit',
+      resourceId: audit.id,
+      metadata: {
+        domain: audit.domain,
+        captureMode: 'manual',
+        clientId: client?.id || null,
+      },
+    });
+
+    return auditSummary(audit);
+  }
+
   const rows = await getDb()
     .insert(websiteAudits)
     .values({
@@ -247,6 +307,12 @@ export async function createWebsiteAudit({
       domain: url.hostname.toLowerCase(),
       maxPages: data.maxPages,
       status: 'queued',
+      captureMode: 'engine',
+      clientId: client?.id || null,
+      projectId: project?.id || null,
+      auditDate,
+      notes: data.notes ?? null,
+      checklist: data.checklist ?? null,
     })
     .returning();
   const audit = rows[0];
@@ -289,7 +355,12 @@ export async function createWebsiteAudit({
     action: 'website_audit.create',
     resourceType: 'website_audit',
     resourceId: audit.id,
-    metadata: { domain: audit.domain, maxPages: audit.maxPages },
+    metadata: {
+      domain: audit.domain,
+      maxPages: audit.maxPages,
+      captureMode: 'engine',
+      clientId: client?.id || null,
+    },
   });
 
   return auditSummary({ ...audit, jobId });
