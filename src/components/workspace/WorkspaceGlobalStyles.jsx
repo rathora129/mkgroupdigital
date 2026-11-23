@@ -15,6 +15,7 @@ const WorkspaceGlobalStyles = createGlobalStyle`
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Headings must beat the public site's dark-theme element styles. */
   .workspace-root h1,
   .workspace-root h2,
   .workspace-root h3,
@@ -35,12 +36,13 @@ const WorkspaceGlobalStyles = createGlobalStyle`
     text-wrap: pretty;
   }
 
-  .workspace-root a {
+  /* Links and buttons stay low-specificity so styled components can theme them. */
+  :where(.workspace-root) :where(a) {
     color: inherit;
     text-decoration: none;
   }
 
-  .workspace-root button {
+  :where(.workspace-root) :where(button) {
     font: inherit;
     color: inherit;
     background: none;

@@ -1,5 +1,3 @@
-import WorkspaceShell from '@/components/workspace/WorkspaceShell';
-
 export const metadata = {
   title: {
     default: 'MK AI Workforce',
@@ -22,5 +20,5 @@ export const viewport = {
 };
 
 export default function WorkspaceLayout({ children }) {
-  return <WorkspaceShell>{children}</WorkspaceShell>;
+  return children;
 }

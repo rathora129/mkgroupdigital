@@ -85,7 +85,12 @@ const Endpoint = styled.code`
 `;
 
 export default function SystemStatus() {
-  const [state, setState] = useState({ status: 'loading', phase: null });
+  const [state, setState] = useState({
+    status: 'loading',
+    phaseLabel: null,
+    dataSources: null,
+    checks: null,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -99,11 +104,21 @@ export default function SystemStatus() {
         return response.json();
       })
       .then((data) => {
-        setState({ status: 'ok', phase: data.phase ?? null });
+        setState({
+          status: 'ok',
+          phaseLabel: data.phaseLabel ?? null,
+          dataSources: data.dataSources ?? null,
+          checks: data.checks ?? null,
+        });
       })
       .catch((error) => {
         if (error.name === 'AbortError') return;
-        setState({ status: 'error', phase: null });
+        setState({
+          status: 'error',
+          phaseLabel: null,
+          dataSources: null,
+          checks: null,
+        });
       });
 
     return () => controller.abort();
@@ -115,6 +130,55 @@ export default function SystemStatus() {
       : state.status === 'ok'
         ? 'Available'
         : 'Unavailable';
+
+  const databaseLabel =
+    state.status === 'loading'
+      ? 'Checking…'
+      : state.checks?.database === 'reachable'
+        ? 'Reachable'
+        : state.checks?.database === 'not_configured'
+          ? 'Not configured'
+          : state.checks?.database === 'unreachable'
+            ? 'Unreachable'
+            : 'Unknown';
+
+  const authLabel =
+    state.status === 'loading'
+      ? 'Checking…'
+      : state.checks?.authentication === 'configured'
+        ? 'Configured'
+        : state.checks?.authentication === 'incomplete'
+          ? 'Incomplete'
+          : 'Unknown';
+
+  const emailLabel =
+    state.status === 'loading'
+      ? 'Checking…'
+      : state.checks?.emailDelivery === 'configured'
+        ? 'Configured'
+        : state.checks?.emailDelivery === 'not_configured'
+          ? 'Not configured'
+          : 'Unknown';
+
+  const providersLabel =
+    state.status === 'loading'
+      ? 'Checking…'
+      : state.checks?.aiProviders === 'configured'
+        ? 'Configured'
+        : state.checks?.aiProviders === 'not_configured'
+          ? 'Not configured'
+          : 'Unknown';
+
+  const workerLabel =
+    state.status === 'loading'
+      ? 'Checking…'
+      : state.checks?.aiWorker === 'running'
+        ? 'Running'
+        : state.checks?.aiWorker === 'unhealthy'
+          ? 'Unhealthy'
+          : state.checks?.aiWorker === 'not_running'
+            ? 'Not running'
+            : 'Unknown';
 
   return (
     <Card aria-labelledby="system-status-title">
@@ -150,15 +214,37 @@ export default function SystemStatus() {
         </div>
         <div>
           <dt>Phase</dt>
-          <dd>{state.phase ? `Phase ${state.phase}` : 'Phase 1 · Foundation'}</dd>
+          <dd>{state.phaseLabel || '2D-A · Opportunities & Service Catalogue'}</dd>
         </div>
         <div>
-          <dt>AI agents</dt>
-          <dd>Not configured</dd>
+          <dt>Database</dt>
+          <dd>{databaseLabel}</dd>
+        </div>
+        <div>
+          <dt>Authentication</dt>
+          <dd>{authLabel}</dd>
+        </div>
+        <div>
+          <dt>Email delivery</dt>
+          <dd>{emailLabel}</dd>
+        </div>
+        <div>
+          <dt>AI providers</dt>
+          <dd>{providersLabel}</dd>
+        </div>
+        <div>
+          <dt>AI worker</dt>
+          <dd>{workerLabel}</dd>
         </div>
         <div>
           <dt>Business data</dt>
-          <dd>Not connected</dd>
+          <dd>
+            {state.status === 'loading'
+              ? 'Checking…'
+              : state.dataSources === 'workspace_database'
+                ? 'Workspace database'
+                : 'Not connected'}
+          </dd>
         </div>
       </Rows>
     </Card>

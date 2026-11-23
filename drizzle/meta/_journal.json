@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1795291731856,
+      "tag": "0000_safe_revanche",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795372467569,
+      "tag": "0001_superb_thunderbolt_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795373963485,
+      "tag": "0002_neat_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795378026453,
+      "tag": "0003_cold_chamber",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795415686277,
+      "tag": "0004_heavy_runaways",
+      "breakpoints": true
+    }
+  ]
+}

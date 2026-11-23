@@ -9,6 +9,7 @@ import styled, { ThemeProvider } from 'styled-components';
 import workspaceTheme, { workspaceMedia } from '@/styles/workspaceTheme';
 import { workspaceNav } from '@/data/workspace';
 import WorkspaceGlobalStyles from './WorkspaceGlobalStyles';
+import WorkspaceUserMenu from './WorkspaceUserMenu';
 
 const Shell = styled.div`
   min-height: 100dvh;
@@ -333,7 +334,22 @@ const Main = styled.main`
   padding: clamp(20px, 3vw, 32px) clamp(14px, 3vw, 32px) 64px;
 `;
 
-function SidebarContent({ pathname, onNavigate, showBrand = true }) {
+function matchesPath(item, pathname) {
+  if (item.href === '/workspace') return pathname === '/workspace';
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}
+
+function SidebarContent({
+  pathname,
+  onNavigate,
+  showBrand = true,
+  workspaceName,
+  navItems,
+}) {
+  const activeHref = navItems
+    .filter((item) => matchesPath(item, pathname))
+    .sort((left, right) => right.href.length - left.href.length)[0]?.href;
+
   return (
     <>
       {showBrand ? (
@@ -343,18 +359,15 @@ function SidebarContent({ pathname, onNavigate, showBrand = true }) {
           </BrandMark>
           <BrandText>
             <BrandName>MK AI Workforce</BrandName>
-            <BrandSub>MK Group Digital</BrandSub>
+            <BrandSub>{workspaceName || 'MK Group Digital'}</BrandSub>
           </BrandText>
         </Brand>
       ) : null}
 
       <Nav aria-label="Workspace navigation">
-        {workspaceNav.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
-          const active =
-            item.href === '/workspace'
-              ? pathname === '/workspace'
-              : pathname.startsWith(item.href);
+          const active = item.href === activeHref;
 
           return (
             <NavLink
@@ -372,7 +385,7 @@ function SidebarContent({ pathname, onNavigate, showBrand = true }) {
       </Nav>
 
       <SidebarFooter>
-        <PhasePill>Phase 1 · Foundation</PhasePill>
+        <PhasePill>2C · Leads, Research &amp; Audits</PhasePill>
         <PublicLink href="/" target="_blank" rel="noopener noreferrer">
           Public website <ArrowUpRight size={13} />
         </PublicLink>
@@ -381,17 +394,26 @@ function SidebarContent({ pathname, onNavigate, showBrand = true }) {
   );
 }
 
-export default function WorkspaceShell({ children }) {
+export default function WorkspaceShell({
+  children,
+  user,
+  workspace,
+  permissions = [],
+}) {
   const pathname = usePathname() || '/workspace';
   const [mobileOpen, setMobileOpen] = useState(false);
   const closeRef = useRef(null);
 
+  const navItems = workspaceNav.filter(
+    (item) => !item.permission || permissions.includes(item.permission),
+  );
+
   const current =
-    workspaceNav.find((item) => item.href === pathname) ||
-    workspaceNav
-      .filter((item) => item.href !== '/workspace')
-      .find((item) => pathname.startsWith(item.href)) ||
-    workspaceNav[0];
+    navItems.find((item) => item.href === pathname) ||
+    navItems
+      .filter((item) => item.href !== '/workspace' && matchesPath(item, pathname))
+      .sort((left, right) => right.href.length - left.href.length)[0] ||
+    navItems[0];
 
   useEffect(() => {
     if (!mobileOpen) return undefined;
@@ -424,7 +446,11 @@ export default function WorkspaceShell({ children }) {
         </a>
 
         <Sidebar>
-          <SidebarContent pathname={pathname} />
+          <SidebarContent
+            pathname={pathname}
+            workspaceName={workspace?.name}
+            navItems={navItems}
+          />
         </Sidebar>
 
         <Column>
@@ -447,10 +473,11 @@ export default function WorkspaceShell({ children }) {
               </Breadcrumb>
 
               <TopbarActions>
-                <TopbarPhase>Phase 1 · Foundation</TopbarPhase>
+                <TopbarPhase>2C · Leads, Research &amp; Audits</TopbarPhase>
                 <TopbarLink href="/" target="_blank" rel="noopener noreferrer">
                   Public website <ArrowUpRight size={13} />
                 </TopbarLink>
+                <WorkspaceUserMenu user={user} workspace={workspace} />
               </TopbarActions>
             </TopbarInner>
           </Topbar>
@@ -491,7 +518,9 @@ export default function WorkspaceShell({ children }) {
                 </DrawerHead>
                 <SidebarContent
                   pathname={pathname}
+                  workspaceName={workspace?.name}
                   onNavigate={() => setMobileOpen(false)}
+                  navItems={navItems}
                 />
               </Drawer>
             </DrawerLayer>
