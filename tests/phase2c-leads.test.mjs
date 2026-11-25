@@ -106,7 +106,7 @@ test('lead schemas validate required fields and defaults', async () => {
   assert.equal(queryDefaults.archived, 'active');
   assert.equal(queryDefaults.sort, 'created');
 
-  assert.deepEqual(service.allowedNextStatuses('proposal'), ['won', 'lost']);
+  assert.deepEqual(service.allowedNextStatuses('proposal'), ['follow_up', 'won', 'lost']);
   assert.equal(service.normalizeWebsiteKey('https://www.Acme.test/'), 'acme.test');
   assert.equal(service.normalizeCompanyKey('Acme, Inc.'), 'acmeinc');
 });
@@ -134,6 +134,7 @@ test('lead lifecycle records activity and status history', { skip }, async () =>
       'researching',
       'qualified',
       'contacted',
+      'follow_up',
       'lost',
     ]);
 

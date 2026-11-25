@@ -2,6 +2,8 @@ import { AI_JOB_MAX_ATTEMPTS } from './queue';
 import { executeAgentRun } from './runtime';
 import { finalizeResearchForRun, prepareResearchJob } from '@/lib/research/service';
 import { runWebsiteAuditJob } from '@/lib/audits/service';
+import { runDiscoveryPipeline, runDiscoveryScan } from '@/lib/discovery/service';
+import { runFollowUpReminderScan } from '@/lib/sales/reminders';
 
 // pg-boss calls this with an array of jobs. A retryable result is thrown so
 // pg-boss schedules the next attempt; everything else settles the job.
@@ -42,4 +44,18 @@ export async function processWebsiteAuditJob(job) {
   const auditId = job?.data?.auditId;
   if (!auditId) return { status: 'skipped', reason: 'missing-audit-id' };
   return runWebsiteAuditJob(auditId);
+}
+
+export async function processDiscoveryRunJob(job) {
+  const runId = job?.data?.runId;
+  if (!runId) return { status: 'skipped', reason: 'missing-run-id' };
+  return runDiscoveryPipeline(runId, { signal: job.signal });
+}
+
+export async function processDiscoveryScanJob() {
+  return runDiscoveryScan();
+}
+
+export async function processReminderScanJob() {
+  return runFollowUpReminderScan();
 }

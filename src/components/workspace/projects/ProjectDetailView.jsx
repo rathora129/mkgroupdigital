@@ -427,6 +427,57 @@ export default function ProjectDetailView({
               </div>
               <FileText size={16} aria-hidden="true" />
             </CardHead>
+            {commercialSnapshot?.source === 'lead_conversion' ? (
+              <Notice $tone="warning">
+                <span>
+                  This project was created by converting a won lead. The figures
+                  below were reported by the owner; they are not verified
+                  payments and no accepted proposal total exists.
+                </span>
+                {commercialSnapshot.reportedAmounts ? (
+                  <MetaGrid>
+                    <div>
+                      <dt>Reported received</dt>
+                      <dd>
+                        {commercialSnapshot.reportedAmounts.receivedCents == null
+                          ? '—'
+                          : formatMoney(
+                              commercialSnapshot.reportedAmounts.receivedCents,
+                              project.currency,
+                            )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Reported outstanding</dt>
+                      <dd>
+                        {commercialSnapshot.reportedAmounts.outstandingCents == null
+                          ? '—'
+                          : formatMoney(
+                              commercialSnapshot.reportedAmounts.outstandingCents,
+                              project.currency,
+                            )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Reported project cost</dt>
+                      <dd>
+                        {commercialSnapshot.reportedAmounts.projectCostCents == null
+                          ? '—'
+                          : formatMoney(
+                              commercialSnapshot.reportedAmounts.projectCostCents,
+                              project.currency,
+                            )}
+                      </dd>
+                    </div>
+                  </MetaGrid>
+                ) : null}
+                {project.leadId ? (
+                  <Link href={`/workspace/leads/${project.leadId}`}>
+                    Open the original lead
+                  </Link>
+                ) : null}
+              </Notice>
+            ) : null}
             {commercialSnapshot?.lines?.length ? (
               <TableWrap>
                 <Table>

@@ -8,17 +8,25 @@ import http from 'node:http';
 import { isDatabaseConfigured, closeDb } from '@/db/client';
 import {
   AI_QUEUE_NAME,
+  DISCOVERY_RUN_QUEUE_NAME,
+  DISCOVERY_SCAN_QUEUE_NAME,
   EXECUTION_QUEUE_NAME,
   INTEGRATION_QUEUE_NAME,
+  REMINDER_SCAN_QUEUE_NAME,
   RESEARCH_QUEUE_NAME,
   WEBSITE_AUDIT_QUEUE_NAME,
   WORKFLOW_QUEUE_NAME,
+  ensureDiscoveryScanSchedule,
+  ensureReminderScanSchedule,
   getBoss,
   getQueueCounts,
   stopQueue,
 } from '@/lib/ai/queue';
 import {
   processAgentJob,
+  processDiscoveryRunJob,
+  processDiscoveryScanJob,
+  processReminderScanJob,
   processResearchJob,
   processWebsiteAuditJob,
 } from '@/lib/ai/worker';
@@ -192,6 +200,83 @@ async function startWorker() {
     return results;
   });
   log(`workflow queue "${WORKFLOW_QUEUE_NAME}" registered`);
+
+  await boss.work(DISCOVERY_RUN_QUEUE_NAME, { batchSize: 1 }, async (jobs) => {
+    const results = [];
+    for (const job of jobs) {
+      stats.lastJobAt = new Date().toISOString();
+      try {
+        const result = await processDiscoveryRunJob(job);
+        if (result.status === 'completed') stats.processed += 1;
+        if (result.status === 'failed') stats.failed += 1;
+        log(
+          `discovery run ${job.id}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`,
+        );
+        results.push(result);
+      } catch (error) {
+        stats.failed += 1;
+        stats.lastError = error?.message || 'unknown error';
+        log(`discovery run ${job.id}: retryable failure — ${stats.lastError}`);
+        throw error;
+      }
+    }
+    return results;
+  });
+  log(`discovery run queue "${DISCOVERY_RUN_QUEUE_NAME}" registered`);
+
+  await boss.work(DISCOVERY_SCAN_QUEUE_NAME, { batchSize: 1 }, async (jobs) => {
+    const results = [];
+    for (const job of jobs) {
+      stats.lastJobAt = new Date().toISOString();
+      try {
+        const result = await processDiscoveryScanJob(job);
+        log(
+          `discovery scan: ${result.due} due, ${result.enqueued} enqueued, ${result.failed} failed`,
+        );
+        results.push(result);
+      } catch (error) {
+        stats.lastError = error?.message || 'unknown error';
+        log(`discovery scan failed — ${stats.lastError}`);
+        throw error;
+      }
+    }
+    return results;
+  });
+  log(`discovery scan queue "${DISCOVERY_SCAN_QUEUE_NAME}" registered`);
+
+  await boss.work(REMINDER_SCAN_QUEUE_NAME, { batchSize: 1 }, async (jobs) => {
+    const results = [];
+    for (const job of jobs) {
+      stats.lastJobAt = new Date().toISOString();
+      try {
+        const result = await processReminderScanJob(job);
+        log(
+          `follow-up scan: ${result.scanned} scanned, ${result.reminders} reminders, ${result.escalated} escalated`,
+        );
+        results.push(result);
+      } catch (error) {
+        stats.lastError = error?.message || 'unknown error';
+        log(`follow-up scan failed — ${stats.lastError}`);
+        throw error;
+      }
+    }
+    return results;
+  });
+  log(`follow-up scan queue "${REMINDER_SCAN_QUEUE_NAME}" registered`);
+
+  try {
+    await ensureDiscoveryScanSchedule();
+    log('discovery scan scheduled every 10 minutes');
+  } catch (error) {
+    log(`discovery scan schedule could not be created: ${error?.message || error}`);
+  }
+
+  try {
+    await ensureReminderScanSchedule();
+    log('follow-up reminder scan scheduled every 15 minutes');
+  } catch (error) {
+    log(`follow-up scan schedule could not be created: ${error?.message || error}`);
+  }
 
   healthServer = http.createServer(async (request, response) => {
     if (request.url !== '/health') {

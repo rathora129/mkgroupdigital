@@ -174,6 +174,19 @@ const NavLink = styled(Link)`
   }
 `;
 
+const NavCount = styled.span`
+  margin-left: auto;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: ${({ theme }) => theme.colors.primary};
+  color: #ffffff;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.5;
+`;
+
 const SidebarFooter = styled.div`
   margin-top: 12px;
   padding: 14px 4px 0;
@@ -345,6 +358,7 @@ function SidebarContent({
   showBrand = true,
   workspaceName,
   navItems,
+  notificationCount = 0,
 }) {
   const activeHref = navItems
     .filter((item) => matchesPath(item, pathname))
@@ -379,6 +393,11 @@ function SidebarContent({
             >
               <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
               <span>{item.label}</span>
+              {item.key === 'notifications' && notificationCount > 0 ? (
+                <NavCount aria-label={`${notificationCount} unread`}>
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </NavCount>
+              ) : null}
             </NavLink>
           );
         })}
@@ -399,6 +418,7 @@ export default function WorkspaceShell({
   user,
   workspace,
   permissions = [],
+  notificationCount = 0,
 }) {
   const pathname = usePathname() || '/workspace';
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -450,6 +470,7 @@ export default function WorkspaceShell({
             pathname={pathname}
             workspaceName={workspace?.name}
             navItems={navItems}
+            notificationCount={notificationCount}
           />
         </Sidebar>
 
@@ -521,6 +542,7 @@ export default function WorkspaceShell({
                   workspaceName={workspace?.name}
                   onNavigate={() => setMobileOpen(false)}
                   navItems={navItems}
+                  notificationCount={notificationCount}
                 />
               </Drawer>
             </DrawerLayer>

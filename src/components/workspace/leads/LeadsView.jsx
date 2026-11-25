@@ -9,6 +9,7 @@ import {
   Filter,
   Plus,
   Search,
+  Upload,
   Users,
   X,
 } from 'lucide-react';
@@ -25,6 +26,7 @@ import {
   Header,
   Hint,
   Lead,
+  LinkButton,
   Notice,
   Page,
   Row,
@@ -58,6 +60,7 @@ const STATUS_ORDER = [
   'researching',
   'qualified',
   'contacted',
+  'follow_up',
   'meeting',
   'proposal',
   'won',
@@ -100,6 +103,7 @@ export default function LeadsView({
   query,
   canCreate,
   canAssign,
+  canImport,
   timezone,
 }) {
   const router = useRouter();
@@ -229,6 +233,12 @@ export default function LeadsView({
             </CardText>
           </div>
           <Actions>
+            {canImport ? (
+              <LinkButton href="/workspace/leads/import">
+                <Upload size={15} />
+                Paste &amp; import
+              </LinkButton>
+            ) : null}
             {canCreate ? (
               <Button
                 type="button"
@@ -454,8 +464,8 @@ export default function LeadsView({
 
       <Hint>
         Status changes follow the pipeline New → Researching → Qualified →
-        Contacted → Meeting → Proposal → Won or Lost. Every change is recorded in
-        the lead timeline.
+        Contacted → Follow-up → Meeting → Proposal → Won or Lost. Every change is
+        recorded in the lead timeline.
       </Hint>
     </Page>
   );

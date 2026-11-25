@@ -6,6 +6,7 @@ export const LEAD_STATUS_META = {
   researching: { label: 'Researching', tone: 'info' },
   qualified: { label: 'Qualified', tone: 'info' },
   contacted: { label: 'Contacted', tone: 'info' },
+  follow_up: { label: 'Follow-up', tone: 'warning' },
   meeting: { label: 'Meeting', tone: 'warning' },
   proposal: { label: 'Proposal', tone: 'warning' },
   won: { label: 'Won', tone: 'success' },
@@ -40,6 +41,11 @@ export const ACTIVITY_LABELS = {
   archived: 'Archived',
   restored: 'Restored',
   research_completed: 'Research completed',
+  call_logged: 'Call logged',
+  follow_up_scheduled: 'Follow-up scheduled',
+  converted_to_client: 'Converted to client',
+  converted_to_project: 'Project created on conversion',
+  reported_amounts_updated: 'Reported amounts updated',
 };
 
 export const RESEARCH_STATUS_META = {

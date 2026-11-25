@@ -5,14 +5,28 @@ export const LEAD_STATUSES = [
   'researching',
   'qualified',
   'contacted',
+  'follow_up',
   'meeting',
   'proposal',
   'won',
   'lost',
 ];
 
+export const LEAD_STATUS_LABELS = {
+  new: 'New',
+  researching: 'Researching',
+  qualified: 'Qualified',
+  contacted: 'Contacted',
+  follow_up: 'Follow-up',
+  meeting: 'Meeting scheduled',
+  proposal: 'Proposal',
+  won: 'Won',
+  lost: 'Lost',
+};
+
 export const LEAD_PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
+// Phase 2I adds explicit attribution for the two new acquisition channels.
 export const LEAD_SOURCES = [
   'website',
   'referral',
@@ -22,8 +36,28 @@ export const LEAD_SOURCES = [
   'social',
   'partner',
   'cold_call',
+  'owner_import',
+  'ai_discovery',
+  'manual_entry',
+  'integration',
   'other',
 ];
+
+export const LEAD_SOURCE_LABELS = {
+  website: 'Website',
+  referral: 'Referral',
+  outbound: 'Outbound',
+  inbound: 'Inbound',
+  event: 'Event',
+  social: 'Social',
+  partner: 'Partner',
+  cold_call: 'Cold call',
+  owner_import: 'Owner import',
+  ai_discovery: 'AI discovery',
+  manual_entry: 'Manual entry',
+  integration: 'Integration',
+  other: 'Other',
+};
 
 export const LEAD_ARCHIVE_FILTERS = ['active', 'archived', 'all'];
 export const LEAD_SORTS = [
@@ -93,6 +127,13 @@ export function isUuid(value) {
   return typeof value === 'string' && UUID_RE.test(value);
 }
 
+const uuidField = (message) =>
+  nullableText(36, message).test(
+    'uuid',
+    message,
+    (value) => value == null || value === '' || isUuid(value),
+  );
+
 const assignmentField = yup
   .mixed()
   .nullable()
@@ -134,6 +175,30 @@ export const leadCreateSchema = yup.object({
     .default('new'),
   nextFollowUpAt: followUpField,
   notes: notesField,
+  requirementsInitial: nullableText(
+    5_000,
+    'Initial requirement must be 5,000 characters or fewer.',
+  ),
+  requirementsDetailed: nullableText(
+    10_000,
+    'Detailed requirement must be 10,000 characters or fewer.',
+  ),
+  nextAction: nullableText(500, 'Next action must be 500 characters or fewer.'),
+});
+
+const reportedMoneyField = yup
+  .number()
+  .transform((value, original) => (original === '' || original === null ? null : value))
+  .integer('Use whole currency units.')
+  .min(0, 'Amount cannot be negative.')
+  .max(1_000_000_000_000, 'That amount is too large.')
+  .nullable();
+
+export const leadReportedMoneySchema = yup.object({
+  reportedAmountReceivedCents: reportedMoneyField,
+  reportedOutstandingCents: reportedMoneyField,
+  reportedProjectCostCents: reportedMoneyField,
+  reportedAmountVerified: yup.boolean(),
 });
 
 export const leadUpdateSchema = yup.object({
@@ -156,6 +221,67 @@ export const leadUpdateSchema = yup.object({
   priority: yup.string().oneOf(LEAD_PRIORITIES, 'Choose a valid priority.'),
   nextFollowUpAt: followUpField,
   notes: notesField,
+  requirementsInitial: nullableText(
+    5_000,
+    'Initial requirement must be 5,000 characters or fewer.',
+  ),
+  requirementsDetailed: nullableText(
+    10_000,
+    'Detailed requirement must be 10,000 characters or fewer.',
+  ),
+  nextAction: nullableText(500, 'Next action must be 500 characters or fewer.'),
+});
+
+export const leadCallSchema = yup.object({
+  outcome: yup
+    .string()
+    .oneOf(
+      ['connected', 'no_answer', 'busy', 'wrong_number', 'callback', 'not_interested', 'interested'],
+      'Choose a valid call outcome.',
+    )
+    .required('Choose a call outcome.'),
+  notes: nullableText(5_000, 'Call notes must be 5,000 characters or fewer.'),
+  requirements: nullableText(
+    10_000,
+    'Requirement notes must be 10,000 characters or fewer.',
+  ),
+  nextFollowUpAt: followUpField,
+  nextAction: nullableText(500, 'Next action must be 500 characters or fewer.'),
+});
+
+export const leadFollowUpSchema = yup.object({
+  title: yup
+    .string()
+    .trim()
+    .min(2, 'Give the follow-up a short title.')
+    .max(200, 'Title must be 200 characters or fewer.')
+    .required('Give the follow-up a short title.'),
+  notes: nullableText(2_000, 'Notes must be 2,000 characters or fewer.'),
+  dueDate: yup
+    .date()
+    .typeError('Enter a valid due date.')
+    .required('Choose a due date.'),
+  dueTime: yup
+    .string()
+    .trim()
+    .matches(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a 24-hour time like 14:30.')
+    .nullable()
+    .default(null),
+  timezone: nullableText(80, 'Timezone must be 80 characters or fewer.'),
+  priority: yup
+    .string()
+    .oneOf(LEAD_PRIORITIES, 'Choose a valid priority.')
+    .default('medium'),
+  ownerUserId: yup
+    .string()
+    .trim()
+    .test('owner', 'Choose a workspace member.', (value) =>
+      value === undefined || value === null || UUID_RE.test(value),
+    ),
+  taskType: yup
+    .string()
+    .oneOf(['callback', 'follow_up', 'meeting', 'proposal', 'payment', 'task'])
+    .default('follow_up'),
 });
 
 export const leadStatusSchema = yup.object({
@@ -203,6 +329,7 @@ export const leadQuerySchema = yup.object({
   status: yup.string().oneOf(LEAD_STATUSES),
   priority: yup.string().oneOf(LEAD_PRIORITIES),
   source: yup.string().oneOf(LEAD_SOURCES),
+  temperature: yup.string().oneOf(['hot', 'warm', 'cold', 'unknown']),
   assigned: yup
     .string()
     .trim()
@@ -227,4 +354,64 @@ export const leadQuerySchema = yup.object({
     .default('created'),
   direction: yup.string().oneOf(['asc', 'desc']).default('desc'),
   due: yup.string().oneOf(['overdue', 'upcoming']),
+});
+
+export const LEAD_IMPORT_SOURCES = ['paste', 'file'];
+
+const importMappingField = yup
+  .object()
+  .nullable()
+  .test('mapping', 'Choose valid columns for the import.', (value) => {
+    if (!value) return true;
+    return Object.entries(value).every(
+      ([key, index]) =>
+        typeof key === 'string' && Number.isInteger(index) && index >= 0,
+    );
+  });
+
+export const leadImportCreateSchema = yup.object({
+  text: yup
+    .string()
+    .required('Paste spreadsheet rows before importing.')
+    .max(400_000, 'That import is too large. Split it into smaller batches.'),
+  source: yup
+    .string()
+    .oneOf(LEAD_IMPORT_SOURCES, 'Choose a valid import source.')
+    .default('paste'),
+  fileName: nullableText(200, 'File name must be 200 characters or fewer.'),
+  mapping: importMappingField,
+});
+
+export const leadImportCorrectSchema = yup.object({
+  corrections: yup
+    .array()
+    .of(
+      yup.object({
+        rowId: yup
+          .string()
+          .trim()
+          .matches(UUID_RE, 'Choose a valid import row.')
+          .required('Choose a valid import row.'),
+        values: yup
+          .object()
+          .required('Provide corrected values.'),
+      }),
+    )
+    .min(1, 'Change at least one value.')
+    .required('Provide row corrections.'),
+});
+
+export const leadImportCommitSchema = yup.object({
+  confirmRepeat: yup.boolean().default(false),
+});
+
+export const leadConversionSchema = yup.object({
+  createProject: yup.boolean().default(true),
+  projectName: nullableText(200, 'Project name must be 200 characters or fewer.'),
+  projectDescription: nullableText(
+    4_000,
+    'Project description must be 4,000 characters or fewer.',
+  ),
+  proposalId: uuidField('Choose a valid proposal.'),
+  clientNotes: nullableText(2_000, 'Client notes must be 2,000 characters or fewer.'),
 });

@@ -7,7 +7,7 @@ import {
   validateBody,
 } from '@/lib/api';
 import { requirePermission } from '@/lib/auth/authorization';
-import { getLead, updateLead } from '@/lib/leads/service';
+import { getLead, leadAccessFor, updateLead } from '@/lib/leads/service';
 import { isUuid, leadUpdateSchema } from '@/lib/leads/validation';
 import { rateLimit } from '@/lib/rate-limit';
 
@@ -22,7 +22,11 @@ export async function GET(request, { params }) {
       throw new ApiError(404, 'NOT_FOUND', 'That lead could not be found.');
     }
 
-    const detail = await getLead(viewer.membership.workspaceId, leadId);
+    const detail = await getLead(
+      viewer.membership.workspaceId,
+      leadId,
+      leadAccessFor(viewer),
+    );
     if (!detail) {
       throw new ApiError(404, 'NOT_FOUND', 'That lead could not be found.');
     }
@@ -61,6 +65,7 @@ export async function PATCH(request, { params }) {
       userId: viewer.user.id,
       leadId,
       data,
+      access: leadAccessFor(viewer),
     });
     if (!result) {
       throw new ApiError(404, 'NOT_FOUND', 'That lead could not be found.');

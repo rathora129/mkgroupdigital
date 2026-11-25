@@ -2,7 +2,11 @@ import { notFound } from 'next/navigation';
 import LeadDetailView from '@/components/workspace/leads/LeadDetailView';
 import { requirePermissionPage } from '@/lib/auth/authorization';
 import { hasPermission } from '@/lib/auth/permissions';
-import { getLead } from '@/lib/leads/service';
+import {
+  getLeadConversionPreview,
+  getLeadUnifiedTimeline,
+} from '@/lib/leads/conversion';
+import { getLead, leadAccessFor } from '@/lib/leads/service';
 import { isUuid } from '@/lib/leads/validation';
 import { listMembers } from '@/lib/workspace/service';
 
@@ -19,17 +23,28 @@ export default async function LeadDetailPage({ params }) {
 
   const workspaceId = viewer.membership.workspaceId;
   const role = viewer.membership.role;
+  const access = leadAccessFor(viewer);
 
-  const detail = await getLead(workspaceId, leadId);
+  const detail = await getLead(workspaceId, leadId, access);
   if (!detail) notFound();
 
   const canAssign = hasPermission(role, 'leads.assign');
-  const members = canAssign ? await listMembers(workspaceId) : [];
+  const canConvert = hasPermission(role, 'leads.convert');
+  const [members, conversion, timeline] = await Promise.all([
+    canAssign ? listMembers(workspaceId) : [],
+    canConvert && !detail.lead.archivedAt
+      ? getLeadConversionPreview({ workspaceId, leadId, access })
+      : null,
+    getLeadUnifiedTimeline({ workspaceId, leadId, access }),
+  ]);
 
   return (
     <LeadDetailView
       detail={detail}
       members={members}
+      conversion={conversion}
+      timeline={timeline}
+      canConvert={canConvert}
       canUpdate={hasPermission(role, 'leads.update')}
       canAssign={canAssign}
       canArchive={hasPermission(role, 'leads.archive')}

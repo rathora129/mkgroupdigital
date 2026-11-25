@@ -26,14 +26,17 @@ import {
 import { ApiError } from '@/lib/api-error';
 import { recordAudit } from '@/lib/audit';
 import { normalizeEmail } from '@/lib/auth/hash';
+import { hasPermission } from '@/lib/auth/permissions';
+import { createNotification, NOTIFICATION_TYPES } from '@/lib/notifications/service';
 
 export const LEAD_STATUS_TRANSITIONS = {
-  new: ['researching', 'qualified', 'contacted', 'lost'],
-  researching: ['qualified', 'contacted', 'lost'],
-  qualified: ['contacted', 'meeting', 'proposal', 'lost'],
-  contacted: ['meeting', 'proposal', 'lost'],
-  meeting: ['proposal', 'won', 'lost'],
-  proposal: ['won', 'lost'],
+  new: ['researching', 'qualified', 'contacted', 'follow_up', 'lost'],
+  researching: ['qualified', 'contacted', 'follow_up', 'lost'],
+  qualified: ['contacted', 'follow_up', 'meeting', 'proposal', 'lost'],
+  contacted: ['follow_up', 'meeting', 'proposal', 'lost'],
+  follow_up: ['contacted', 'meeting', 'proposal', 'won', 'lost'],
+  meeting: ['follow_up', 'proposal', 'won', 'lost'],
+  proposal: ['follow_up', 'won', 'lost'],
   won: ['researching'],
   lost: ['researching'],
 };
@@ -116,14 +119,28 @@ const LEAD_SELECT = {
   status: leads.status,
   nextFollowUpAt: leads.nextFollowUpAt,
   notes: leads.notes,
+  requirementsInitial: leads.requirementsInitial,
+  requirementsDetailed: leads.requirementsDetailed,
+  reportedAmountReceivedCents: leads.reportedAmountReceivedCents,
+  reportedOutstandingCents: leads.reportedOutstandingCents,
+  reportedProjectCostCents: leads.reportedProjectCostCents,
+  reportedAmountVerified: leads.reportedAmountVerified,
+  importBatchId: leads.importBatchId,
+  discoveryProspectId: leads.discoveryProspectId,
+  aiLeadScore: leads.aiLeadScore,
+  aiTemperature: leads.aiTemperature,
+  discoveredAt: leads.discoveredAt,
+  nextAction: leads.nextAction,
+  lastContactedAt: leads.lastContactedAt,
   createdByUserId: leads.createdByUserId,
   archivedAt: leads.archivedAt,
   createdAt: leads.createdAt,
   updatedAt: leads.updatedAt,
 };
 
-function leadFilters(workspaceId, query, viewerUserId) {
+function leadFilters(workspaceId, query, viewerUserId, access = null) {
   const filters = [eq(leads.workspaceId, workspaceId)];
+  leadAccessFilter(filters, access);
 
   if (query.archived === 'archived') {
     filters.push(isNotNull(leads.archivedAt));
@@ -134,6 +151,9 @@ function leadFilters(workspaceId, query, viewerUserId) {
   if (query.status) filters.push(eq(leads.status, query.status));
   if (query.priority) filters.push(eq(leads.priority, query.priority));
   if (query.source) filters.push(eq(leads.source, query.source));
+  if (query.temperature) {
+    filters.push(eq(leads.aiTemperature, query.temperature));
+  }
 
   if (query.assigned === 'me') {
     filters.push(eq(leads.assignedUserId, viewerUserId));
@@ -179,9 +199,38 @@ function addDays(days) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 }
 
-export async function listLeads(workspaceId, viewerUserId, query) {
+// A caller without leads.view_all may only ever see leads assigned to them.
+// Access is resolved from the stored membership role by the route layer; the
+// service re-checks it so a direct API call cannot bypass the rule.
+function leadAccessFilter(filters, access) {
+  if (access && access.canViewAll === false) {
+    filters.push(eq(leads.assignedUserId, access.userId));
+  }
+}
+
+function assertLeadAccess(lead, access) {
+  if (!access || access.canViewAll !== false) return;
+  if (lead.assignedUserId !== access.userId) {
+    throw new ApiError(
+      403,
+      'FORBIDDEN',
+      'This lead is assigned to another sales executive.',
+    );
+  }
+}
+
+// Routes and pages call this so the same membership role drives both the API
+// and server-rendered reads.
+export function leadAccessFor(viewer) {
+  return {
+    userId: viewer.user.id,
+    canViewAll: hasPermission(viewer.membership.role, 'leads.view_all'),
+  };
+}
+
+export async function listLeads(workspaceId, viewerUserId, query, access = null) {
   const db = getDb();
-  const where = leadFilters(workspaceId, query, viewerUserId);
+  const where = leadFilters(workspaceId, query, viewerUserId, access);
   const offset = (query.page - 1) * query.pageSize;
 
   const [rows, totals] = await Promise.all([
@@ -216,9 +265,10 @@ async function getLeadRow(workspaceId, leadId) {
   return rows[0] || null;
 }
 
-export async function getLead(workspaceId, leadId) {
+export async function getLead(workspaceId, leadId, access = null) {
   const lead = await getLeadRow(workspaceId, leadId);
   if (!lead) return null;
+  assertLeadAccess(lead, access);
 
   const db = getDb();
   const [activities, statusHistory, possibleDuplicates, linkedOpportunities] =
@@ -465,8 +515,8 @@ export async function createLead({ workspaceId, userId, data }) {
   };
 }
 
-export async function updateLead({ workspaceId, userId, leadId, data }) {
-  const current = await getLead(workspaceId, leadId);
+export async function updateLead({ workspaceId, userId, leadId, data, access = null }) {
+  const current = await getLead(workspaceId, leadId, access);
   if (!current) return null;
   if (current.lead.archivedAt) {
     throw new ApiError(
@@ -512,11 +562,71 @@ export async function updateLead({ workspaceId, userId, leadId, data }) {
     metadata: { fields: changedFields },
   });
 
-  const next = await getLead(workspaceId, leadId);
+  const next = await getLead(workspaceId, leadId, access);
   return {
     lead: next.lead,
     possibleDuplicates: next.possibleDuplicates,
   };
+}
+
+// Reported amounts are what the owner was told, never a verified payment or an
+// invoice. They are stored separately from any accepted proposal total so
+// finance reporting can label them as unverified.
+export async function updateLeadReportedAmounts({
+  workspaceId,
+  userId,
+  leadId,
+  data,
+  access = null,
+}) {
+  const current = await getLead(workspaceId, leadId, access);
+  if (!current) return null;
+  if (current.lead.archivedAt) {
+    throw new ApiError(
+      409,
+      'LEAD_ARCHIVED',
+      'Restore this lead before editing reported amounts.',
+    );
+  }
+
+  const patch = {};
+  for (const key of [
+    'reportedAmountReceivedCents',
+    'reportedOutstandingCents',
+    'reportedProjectCostCents',
+    'reportedAmountVerified',
+  ]) {
+    if (data[key] !== undefined) patch[key] = data[key];
+  }
+  if (Object.keys(patch).length === 0) {
+    return { lead: current.lead, changed: false };
+  }
+
+  await getDb()
+    .update(leads)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(and(eq(leads.workspaceId, workspaceId), eq(leads.id, leadId)));
+
+  await insertActivity({
+    workspaceId,
+    leadId,
+    userId,
+    type: 'reported_amounts_updated',
+    body: 'Reported amounts were updated. These are owner-reported figures, not verified payments.',
+    metadata: patch,
+  });
+
+  await recordAudit({
+    workspaceId,
+    actorUserId: userId,
+    action: 'lead.reported_amounts',
+    resourceType: 'lead',
+    resourceId: leadId,
+    metadata: patch,
+  });
+
+  const next = await getLead(workspaceId, leadId, access);
+  return { lead: next.lead, changed: true };
 }
 
 export async function changeLeadStatus({
@@ -525,9 +635,11 @@ export async function changeLeadStatus({
   leadId,
   status,
   note = null,
+  access = null,
 }) {
   const current = await getLeadRow(workspaceId, leadId);
   if (!current) return null;
+  assertLeadAccess(current, access);
   if (current.archivedAt) {
     throw new ApiError(
       409,
@@ -643,6 +755,20 @@ export async function assignLead({ workspaceId, userId, leadId, assignedUserId }
     metadata: { assignedUserId },
   });
 
+  if (assignedUserId && assignedUserId !== userId) {
+    await createNotification({
+      workspaceId,
+      userId: assignedUserId,
+      type: NOTIFICATION_TYPES.leadAssigned,
+      title: `Lead assigned: ${next.companyName}`,
+      body: 'You are now responsible for this lead. Review the next action and follow-up date.',
+      level: 'info',
+      resourceType: 'lead',
+      resourceId: leadId,
+      actionUrl: `/workspace/leads/${leadId}`,
+    });
+  }
+
   return { lead: next, changed: true };
 }
 
@@ -685,9 +811,16 @@ export async function setLeadArchived({
   return { lead: next, changed: true };
 }
 
-export async function addLeadNote({ workspaceId, userId, leadId, body }) {
+export async function addLeadNote({
+  workspaceId,
+  userId,
+  leadId,
+  body,
+  access = null,
+}) {
   const current = await getLeadRow(workspaceId, leadId);
   if (!current) return null;
+  assertLeadAccess(current, access);
   if (current.archivedAt) {
     throw new ApiError(
       409,
@@ -739,12 +872,11 @@ export async function addLeadNote({ workspaceId, userId, leadId, body }) {
   return rows[0] || null;
 }
 
-export async function getLeadOverview(workspaceId, userId) {
+export async function getLeadOverview(workspaceId, userId, access = null) {
   const db = getDb();
-  const activeFilters = and(
-    eq(leads.workspaceId, workspaceId),
-    isNull(leads.archivedAt),
-  );
+  const scope = [eq(leads.workspaceId, workspaceId)];
+  leadAccessFilter(scope, access);
+  const activeFilters = and(...scope, isNull(leads.archivedAt));
 
   const [byStatus, assignedRows, dueRows, archivedRows] = await Promise.all([
     db
@@ -769,9 +901,7 @@ export async function getLeadOverview(workspaceId, userId) {
     db
       .select({ value: count() })
       .from(leads)
-      .where(
-        and(eq(leads.workspaceId, workspaceId), isNotNull(leads.archivedAt)),
-      ),
+      .where(and(...scope, isNotNull(leads.archivedAt))),
   ]);
 
   const status = {};

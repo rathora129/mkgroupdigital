@@ -61,6 +61,42 @@ import {
 } from '@/components/workspace/phase2c/meta';
 import { OPPORTUNITY_STAGE_META } from '@/components/workspace/phase2d/meta';
 import LeadForm from './LeadForm';
+import ReportedAmountsForm from './ReportedAmountsForm';
+import ConversionForm from './ConversionForm';
+
+const TIMELINE_SOURCE_LABELS = {
+  lead: 'Lead',
+  meeting: 'Meeting',
+  task: 'Follow-up',
+  client: 'Client',
+  project: 'Project',
+  finance: 'Finance',
+};
+
+const TIMELINE_SOURCE_TONE = {
+  lead: 'info',
+  meeting: 'success',
+  task: 'warning',
+  client: 'success',
+  project: 'info',
+  finance: 'muted',
+};
+
+function formatReportedCents(value, currency) {
+  if (value === null || value === undefined) return '—';
+  const amount = Number(value) / 100;
+  if (!Number.isFinite(amount)) return '—';
+  try {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: currency || 'INR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency || ''} ${amount.toFixed(2)}`.trim();
+  }
+}
 
 function websiteHref(value) {
   if (!value) return null;
@@ -70,6 +106,9 @@ function websiteHref(value) {
 export default function LeadDetailView({
   detail,
   members,
+  conversion,
+  timeline,
+  canConvert,
   canUpdate,
   canAssign,
   canArchive,
@@ -79,9 +118,9 @@ export default function LeadDetailView({
   timezone,
 }) {
   const router = useRouter();
-  const { lead, activities, statusHistory, possibleDuplicates, allowedTransitions } =
-    detail;
+  const { lead, statusHistory, possibleDuplicates, allowedTransitions } = detail;
   const opportunities = detail.opportunities || [];
+  const timelineItems = timeline?.items || [];
 
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(null);
@@ -404,6 +443,147 @@ export default function LeadDetailView({
         ) : null}
       </Card>
 
+      <Card>
+        <CardHead>
+          <div>
+            <CardTitle>Reported amounts</CardTitle>
+            <CardText>
+              Figures the owner reported. They are not verified payments and are
+              never treated as invoice or proposal totals.
+            </CardText>
+          </div>
+          <Badge $tone={lead.reportedAmountVerified ? 'success' : 'warning'}>
+            {lead.reportedAmountVerified ? 'Marked verified' : 'Not verified'}
+          </Badge>
+        </CardHead>
+        <MetaGrid>
+          <div>
+            <dt>Amount received</dt>
+            <dd>
+              {formatReportedCents(
+                lead.reportedAmountReceivedCents,
+                lead.currency,
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Outstanding</dt>
+            <dd>
+              {formatReportedCents(
+                lead.reportedOutstandingCents,
+                lead.currency,
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Project cost</dt>
+            <dd>
+              {formatReportedCents(
+                lead.reportedProjectCostCents,
+                lead.currency,
+              )}
+            </dd>
+          </div>
+        </MetaGrid>
+        {canUpdate && !archived ? (
+          <>
+            <Subhead>Update reported amounts</Subhead>
+            <ReportedAmountsForm
+              lead={lead}
+              onDone={() => {
+                setNotice('Reported amounts saved.');
+                router.refresh();
+              }}
+            />
+          </>
+        ) : (
+          <Hint>
+            Reported amounts can be changed by a member with lead update access.
+          </Hint>
+        )}
+      </Card>
+
+      {canConvert && !archived ? (
+        <Card>
+          <CardHead>
+            <div>
+              <CardTitle>Client and project conversion</CardTitle>
+              <CardText>
+                A won lead converts once. The client keeps the link to this lead,
+                and reported amounts carry across as unverified figures.
+              </CardText>
+            </div>
+            <Badge
+              $tone={
+                conversion?.client
+                  ? 'success'
+                  : conversion?.eligible
+                    ? 'warning'
+                    : 'muted'
+              }
+            >
+              {conversion?.client
+                ? 'Converted'
+                : conversion?.eligible
+                  ? 'Ready to convert'
+                  : 'Not won'}
+            </Badge>
+          </CardHead>
+
+          {conversion?.client ? (
+            <Stack $gap={10}>
+              <CardText>
+                Client{' '}
+                <Link href={`/workspace/clients/${conversion.client.id}`}>
+                  {conversion.client.reference} ·{' '}
+                  {conversion.client.companyName}
+                </Link>{' '}
+                ({conversion.client.status}) already exists for this lead.
+              </CardText>
+              {conversion.projects.length > 0 ? (
+                <>
+                  <Subhead>Projects</Subhead>
+                  <Stack $gap={6}>
+                    {conversion.projects.map((project) => (
+                      <Row key={project.id}>
+                        <Link
+                          href={`/workspace/projects/${project.id}`}
+                          style={{ fontWeight: 600, fontSize: '0.82rem' }}
+                        >
+                          {project.reference} · {project.name}
+                        </Link>
+                        <Badge $tone="muted">{project.status}</Badge>
+                      </Row>
+                    ))}
+                  </Stack>
+                </>
+              ) : (
+                <Hint>No project is linked to this lead yet.</Hint>
+              )}
+            </Stack>
+          ) : conversion?.eligible ? (
+            <ConversionForm
+              leadId={lead.id}
+              proposals={conversion.proposals}
+              currency={lead.currency}
+              onDone={(result) => {
+                setNotice(
+                  `Converted to client ${result.client.reference}${
+                    result.project ? ` and project ${result.project.reference}` : ''
+                  }.`,
+                );
+                router.refresh();
+              }}
+            />
+          ) : (
+            <Hint>
+              Move this lead to Won before converting it. Current stage:{' '}
+              {status.label}.
+            </Hint>
+          )}
+        </Card>
+      ) : null}
+
       {canAssign || canUpdate ? (
         <TwoCol>
           {canUpdate && !archived ? (
@@ -657,32 +837,43 @@ export default function LeadDetailView({
         <Card>
           <CardHead>
             <div>
-              <CardTitle>Activity</CardTitle>
-              <CardText>Newest first. Notes and system events are shown.</CardText>
+              <CardTitle>Unified timeline</CardTitle>
+              <CardText>
+                Read-only history across the lead, meetings, follow-ups and any
+                linked client or project. Newest first.
+              </CardText>
             </div>
           </CardHead>
-          {activities.length === 0 ? (
-            <Hint>No activity has been recorded for this lead yet.</Hint>
+          {timelineItems.length === 0 ? (
+            <Hint>No history has been recorded for this lead yet.</Hint>
           ) : (
             <Timeline>
-              {activities.map((activity) => (
+              {timelineItems.map((item) => (
                 <TimelineItem
-                  key={activity.id}
+                  key={item.id}
                   $tone={
-                    activity.type === 'archived' || activity.type === 'lost'
+                    item.type === 'lost' || item.type === 'archived'
                       ? 'danger'
-                      : activity.type === 'research_completed'
-                        ? 'success'
-                        : 'info'
+                      : TIMELINE_SOURCE_TONE[item.source] || 'info'
                   }
                 >
-                  <strong>{ACTIVITY_LABELS[activity.type] || activity.type}</strong>
-                  {activity.body ? <p>{activity.body}</p> : null}
+                  <Badge $tone="muted">
+                    {TIMELINE_SOURCE_LABELS[item.source] || item.source}
+                  </Badge>
+                  <strong>
+                    {item.source === 'lead'
+                      ? ACTIVITY_LABELS[item.type] || item.title
+                      : item.title}
+                  </strong>
+                  {item.body ? <p>{item.body}</p> : null}
                   <span>
-                    {activity.actorName ||
-                      activity.actorEmail ||
-                      'System'}{' '}
-                    · {formatDateTime(activity.createdAt, timezone)}
+                    {item.href ? (
+                      <Link href={item.href} style={{ marginRight: 8 }}>
+                        Open
+                      </Link>
+                    ) : null}
+                    {item.actorName || 'System'} ·{' '}
+                    {formatDateTime(item.at, timezone)}
                   </span>
                 </TimelineItem>
               ))}

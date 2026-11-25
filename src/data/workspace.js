@@ -1,6 +1,8 @@
 import {
   Activity,
   BadgeCheck,
+  BarChart3,
+  Bell,
   BookOpen,
   Bot,
   Building2,
@@ -15,12 +17,15 @@ import {
   ListChecks,
   Megaphone,
   PlayCircle,
+  PhoneCall,
   Plug,
+  Radar,
   ScrollText,
   Search,
   Settings,
   Target,
   Users,
+  Video,
   Wallet,
   Workflow,
 } from 'lucide-react';
@@ -33,6 +38,36 @@ export const workspaceNav = [
     icon: LayoutDashboard,
     description: 'A summary of the workspace and its connected modules.',
     features: [],
+  },
+  {
+    key: 'business',
+    label: 'Business intelligence',
+    href: '/workspace/business',
+    icon: BarChart3,
+    permission: 'dashboard.view',
+    description:
+      'An owner view of lead acquisition, AI discovery, imports, sales activity, delivery load, clients and money — with reported amounts kept separate from verified finance records.',
+    features: [
+      'Lead pipeline, sources and conversion rate',
+      'Discovery and import throughput',
+      'Calls, meetings and overdue follow-ups',
+      'Reported vs verified money totals',
+    ],
+  },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    href: '/workspace/notifications',
+    icon: Bell,
+    permission: 'notifications.view',
+    description:
+      'Reminders, lead assignments and meeting updates addressed to you, with unread counts and a read state.',
+    features: [
+      'Follow-up due and overdue reminders',
+      'Lead assignment notices',
+      'Meeting scheduling updates',
+      'Unread filter and mark all as read',
+    ],
   },
   {
     key: 'ai-workforce',
@@ -78,6 +113,37 @@ export const workspaceNav = [
       'Follow-up dates and overdue tracking',
       'Notes, activity and status history',
       'Safe duplicate review without automatic merging',
+    ],
+  },
+  {
+    key: 'sales',
+    label: 'Sales & calls',
+    href: '/workspace/sales',
+    icon: PhoneCall,
+    permission: 'leads.view',
+    description:
+      'A caller workspace that only shows the leads assigned to each sales executive, with call logging, follow-up tasks and reminders.',
+    features: [
+      'Assigned leads only for callers',
+      'Call outcomes recorded in the lead timeline',
+      'Follow-up tasks with owner and due time',
+      'Overdue follow-up reminders and escalation',
+      'Upcoming meetings in the same view',
+    ],
+  },
+  {
+    key: 'meetings',
+    label: 'Meetings',
+    href: '/workspace/meetings',
+    icon: Video,
+    permission: 'meetings.view',
+    description:
+      'Lead and client meetings stored in the workspace. Google Calendar and Google Meet are used only after a real OAuth connection; status always reflects reality.',
+    features: [
+      'Schedule meetings against a lead or internal',
+      'Status lifecycle with history',
+      'Honest Google Calendar connection status',
+      'No fabricated Meet links or invites',
     ],
   },
   {
@@ -140,6 +206,22 @@ export const workspaceNav = [
       'Findings labelled by verification level',
       'Stored source references',
       'Background execution through the AI worker',
+    ],
+  },
+  {
+    key: 'discovery',
+    label: 'AI discovery',
+    href: '/workspace/discovery',
+    icon: Radar,
+    permission: 'discovery.view',
+    description:
+      'Scheduled discovery campaigns that source businesses from connected providers, enrich them with labelled AI hypotheses and hold every candidate for human review.',
+    features: [
+      'Google Places or public web search sources',
+      'Daily limits, budgets and schedules',
+      'Separate facts, observations and AI hypotheses',
+      'Review queue with duplicate protection',
+      'Runs managed by the existing background worker',
     ],
   },
   {

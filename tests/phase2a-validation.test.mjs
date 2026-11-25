@@ -132,6 +132,17 @@ test('read-only roles never gain management permissions', () => {
     PERMISSIONS.executionsExecute,
     PERMISSIONS.automationsView,
     PERMISSIONS.automationsManage,
+    PERMISSIONS.leadsViewAll,
+    PERMISSIONS.leadsConvert,
+    PERMISSIONS.callsLog,
+    PERMISSIONS.discoveryView,
+    PERMISSIONS.discoveryManage,
+    PERMISSIONS.discoveryReview,
+    PERMISSIONS.meetingsView,
+    PERMISSIONS.meetingsSchedule,
+    PERMISSIONS.meetingsManage,
+    PERMISSIONS.notificationsView,
+    PERMISSIONS.dashboardView,
   ]);
 
   assert.deepEqual(permissionsFor('member'), [
@@ -194,6 +205,10 @@ test('read-only roles never gain management permissions', () => {
     PERMISSIONS.executionsView,
     PERMISSIONS.executionsRequest,
     PERMISSIONS.automationsView,
+    PERMISSIONS.callsLog,
+    PERMISSIONS.meetingsView,
+    PERMISSIONS.meetingsSchedule,
+    PERMISSIONS.notificationsView,
   ]);
 
   assert.deepEqual(permissionsFor('specialist'), [
@@ -251,6 +266,10 @@ test('read-only roles never gain management permissions', () => {
     PERMISSIONS.executionsView,
     PERMISSIONS.executionsRequest,
     PERMISSIONS.automationsView,
+    PERMISSIONS.callsLog,
+    PERMISSIONS.meetingsView,
+    PERMISSIONS.meetingsSchedule,
+    PERMISSIONS.notificationsView,
   ]);
 
   for (const role of ['member', 'specialist']) {
@@ -300,6 +319,8 @@ test('read-only roles never gain management permissions', () => {
     PERMISSIONS.integrationsView,
     PERMISSIONS.executionsView,
     PERMISSIONS.automationsView,
+    PERMISSIONS.meetingsView,
+    PERMISSIONS.notificationsView,
   ]);
   assert.equal(hasPermission('viewer', PERMISSIONS.agentsRun), false);
   assert.equal(hasPermission('viewer', PERMISSIONS.leadsCreate), false);

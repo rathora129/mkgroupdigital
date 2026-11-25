@@ -4,9 +4,9 @@ import { ApiError } from '@/lib/api-error';
 // tested in plain Node. src/lib/api.js re-exports these for route handlers.
 const MAX_BODY_BYTES = 32 * 1024;
 
-export async function readJsonBody(request) {
+export async function readJsonBody(request, { maxBytes = MAX_BODY_BYTES } = {}) {
   const contentLength = Number(request.headers.get('content-length') || 0);
-  if (contentLength > MAX_BODY_BYTES) {
+  if (contentLength > maxBytes) {
     throw new ApiError(413, 'BODY_TOO_LARGE', 'That request is too large.');
   }
 

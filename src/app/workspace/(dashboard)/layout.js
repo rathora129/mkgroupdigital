@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import WorkspaceShell from '@/components/workspace/WorkspaceShell';
 import { getViewer } from '@/lib/auth/authorization';
-import { permissionsFor } from '@/lib/auth/permissions';
+import { hasPermission, permissionsFor } from '@/lib/auth/permissions';
+import { countUnreadNotifications } from '@/lib/notifications/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,16 @@ export default async function DashboardLayout({ children }) {
   if (viewer.status !== 'ok') {
     redirect('/workspace/login');
   }
+
+  const notificationCount = hasPermission(
+    viewer.membership.role,
+    'notifications.view',
+  )
+    ? await countUnreadNotifications(
+        viewer.membership.workspaceId,
+        viewer.user.id,
+      )
+    : 0;
 
   return (
     <WorkspaceShell
@@ -25,6 +36,7 @@ export default async function DashboardLayout({ children }) {
         role: viewer.membership.role,
       }}
       permissions={permissionsFor(viewer.membership.role)}
+      notificationCount={notificationCount}
     >
       {children}
     </WorkspaceShell>

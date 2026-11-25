@@ -421,10 +421,19 @@ export const leadStatus = pgEnum('lead_status', [
   'researching',
   'qualified',
   'contacted',
+  'follow_up',
   'meeting',
   'proposal',
   'won',
   'lost',
+]);
+
+// Phase 2I — how a lead is qualified before a human ever calls it.
+export const leadTemperature = pgEnum('lead_temperature', [
+  'hot',
+  'warm',
+  'cold',
+  'unknown',
 ]);
 
 export const leadPriority = pgEnum('lead_priority', [
@@ -519,6 +528,37 @@ export const leads = pgTable(
       mode: 'date',
     }),
     notes: text('notes'),
+    // Phase 2I — requirements captured by the owner or discovered by AI.
+    requirementsInitial: text('requirements_initial'),
+    requirementsDetailed: text('requirements_detailed'),
+    // Reported money comes from the owner spreadsheet. It is never treated as
+    // a verified payment: finance stays authoritative in invoices/payments and
+    // these values stay marked unverified until a human confirms them.
+    reportedAmountReceivedCents: integer('reported_amount_received_cents'),
+    reportedOutstandingCents: integer('reported_outstanding_cents'),
+    reportedProjectCostCents: integer('reported_project_cost_cents'),
+    reportedAmountVerified: boolean('reported_amount_verified')
+      .notNull()
+      .default(false),
+    importBatchId: uuid('import_batch_id').references(
+      () => leadImportBatches.id,
+      { onDelete: 'set null' },
+    ),
+    discoveryProspectId: uuid('discovery_prospect_id').references(
+      () => discoveryProspects.id,
+      { onDelete: 'set null' },
+    ),
+    aiLeadScore: integer('ai_lead_score'),
+    aiTemperature: leadTemperature('ai_temperature').notNull().default('unknown'),
+    discoveredAt: timestamp('discovered_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    nextAction: text('next_action'),
+    lastContactedAt: timestamp('last_contacted_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
     createdByUserId: uuid('created_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
@@ -541,6 +581,11 @@ export const leads = pgTable(
     ),
     index('leads_workspace_email_idx').on(table.workspaceId, table.email),
     index('leads_workspace_website_idx').on(table.workspaceId, table.website),
+    index('leads_workspace_import_batch_idx').on(
+      table.workspaceId,
+      table.importBatchId,
+    ),
+    index('leads_workspace_source_idx').on(table.workspaceId, table.source),
   ],
 );
 
@@ -2004,9 +2049,19 @@ export const projectTasks = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
+    // Phase 2I — a task may belong to a delivery project, a sales lead or a
+    // client follow-up. Exactly one of projectId/leadId/clientId is normally
+    // set; project delivery keeps its existing required link.
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'cascade',
+    }),
+    leadId: uuid('lead_id').references(() => leads.id, {
+      onDelete: 'cascade',
+    }),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'cascade',
+    }),
+    taskType: text('task_type').notNull().default('task'),
     title: text('title').notNull(),
     description: text('description'),
     status: taskStatus('status').notNull().default('todo'),
@@ -2016,6 +2071,18 @@ export const projectTasks = pgTable(
     }),
     startDate: timestamp('start_date', { withTimezone: true, mode: 'date' }),
     dueDate: timestamp('due_date', { withTimezone: true, mode: 'date' }),
+    // Optional local due time (HH:MM) and the IANA zone it belongs to, so a
+    // reminder fires at the intended moment rather than at UTC midnight.
+    dueTime: text('due_time'),
+    timezone: text('timezone'),
+    reminderSentAt: timestamp('reminder_sent_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    escalatedAt: timestamp('escalated_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
     estimatedMinutes: integer('estimated_minutes').notNull().default(0),
     actualMinutes: integer('actual_minutes').notNull().default(0),
     completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }),
@@ -2047,6 +2114,10 @@ export const projectTasks = pgTable(
     index('project_tasks_project_status_idx').on(
       table.projectId,
       table.status,
+    ),
+    index('project_tasks_workspace_lead_idx').on(
+      table.workspaceId,
+      table.leadId,
     ),
     index('project_tasks_workspace_owner_idx').on(
       table.workspaceId,
@@ -3878,5 +3949,383 @@ export const workflowRunSteps = pgTable(
   },
   (table) => [
     index('workflow_run_steps_run_created_idx').on(table.runId, table.createdAt),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Phase 2I — owner lead import, AI prospect discovery, notifications, meetings
+// ---------------------------------------------------------------------------
+
+export const importBatchStatus = pgEnum('import_batch_status', [
+  'preview',
+  'committed',
+  'cancelled',
+]);
+
+export const discoveryCampaignStatus = pgEnum('discovery_campaign_status', [
+  'draft',
+  'active',
+  'paused',
+  'completed',
+  'cancelled',
+]);
+
+export const discoveryFrequency = pgEnum('discovery_frequency', [
+  'manual',
+  'daily',
+  'weekly',
+]);
+
+export const discoveryProspectStatus = pgEnum('discovery_prospect_status', [
+  'pending_review',
+  'approved',
+  'rejected',
+  'duplicate',
+]);
+
+export const meetingStatus = pgEnum('meeting_status', [
+  'scheduled',
+  'rescheduled',
+  'completed',
+  'cancelled',
+]);
+
+// One batch per paste/upload. The parsed rows live in lead_import_rows so a
+// preview can be corrected before the owner commits the batch transactionally.
+export const leadImportBatches = pgTable(
+  'lead_import_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    source: text('source').notNull().default('paste'),
+    status: importBatchStatus('status').notNull().default('preview'),
+    fileName: text('file_name'),
+    headers: jsonb('headers').notNull().default([]),
+    mapping: jsonb('mapping').notNull().default({}),
+    totals: jsonb('totals').notNull().default({}),
+    // Hash of the normalised parsed rows. A repeated commit of the same
+    // content is refused unless the owner explicitly confirms it.
+    signature: text('signature'),
+    importedByUserId: uuid('imported_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    approvedByUserId: uuid('approved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    committedAt: timestamp('committed_at', { withTimezone: true, mode: 'date' }),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('lead_import_batches_workspace_created_idx').on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+    index('lead_import_batches_workspace_signature_idx').on(
+      table.workspaceId,
+      table.signature,
+    ),
+  ],
+);
+
+export const leadImportRows = pgTable(
+  'lead_import_rows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => leadImportBatches.id, { onDelete: 'cascade' }),
+    rowNumber: integer('row_number').notNull(),
+    raw: jsonb('raw').notNull().default({}),
+    normalized: jsonb('normalized').notNull().default({}),
+    status: text('status').notNull().default('pending'),
+    errors: jsonb('errors').notNull().default({}),
+    warnings: jsonb('warnings').notNull().default([]),
+    duplicateLeadId: uuid('duplicate_lead_id').references(() => leads.id, {
+      onDelete: 'set null',
+    }),
+    importedLeadId: uuid('imported_lead_id').references(() => leads.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('lead_import_rows_batch_row_unique').on(
+      table.batchId,
+      table.rowNumber,
+    ),
+    index('lead_import_rows_batch_status_idx').on(table.batchId, table.status),
+  ],
+);
+
+export const discoveryCampaigns = pgTable(
+  'discovery_campaigns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    status: discoveryCampaignStatus('status').notNull().default('draft'),
+    provider: text('provider').notNull().default('public_web_search'),
+    criteria: jsonb('criteria').notNull().default({}),
+    services: jsonb('services').notNull().default([]),
+    frequency: discoveryFrequency('frequency').notNull().default('manual'),
+    dailyLimit: integer('daily_limit').notNull().default(20),
+    maxResearchOps: integer('max_research_ops').notNull().default(20),
+    budgetCents: integer('budget_cents').notNull().default(0),
+    startDate: timestamp('start_date', { withTimezone: true, mode: 'date' }),
+    endDate: timestamp('end_date', { withTimezone: true, mode: 'date' }),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true, mode: 'date' }),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true, mode: 'date' }),
+    lastError: text('last_error'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index('discovery_campaigns_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('discovery_campaigns_workspace_next_run_idx').on(
+      table.workspaceId,
+      table.nextRunAt,
+    ),
+  ],
+);
+
+export const discoveryCampaignRuns = pgTable(
+  'discovery_campaign_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => discoveryCampaigns.id, { onDelete: 'cascade' }),
+    trigger: text('trigger').notNull().default('manual'),
+    status: text('status').notNull().default('running'),
+    discoveredCount: integer('discovered_count').notNull().default(0),
+    duplicateCount: integer('duplicate_count').notNull().default(0),
+    failedCount: integer('failed_count').notNull().default(0),
+    provider: text('provider'),
+    errorMessage: text('error_message'),
+    usage: jsonb('usage'),
+    startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    index('discovery_campaign_runs_campaign_created_idx').on(
+      table.campaignId,
+      table.startedAt,
+    ),
+  ],
+);
+
+export const discoveryProspects = pgTable(
+  'discovery_prospects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    campaignId: uuid('campaign_id').references(() => discoveryCampaigns.id, {
+      onDelete: 'set null',
+    }),
+    provider: text('provider'),
+    dedupeKey: text('dedupe_key').notNull(),
+    businessName: text('business_name').notNull(),
+    website: text('website'),
+    phone: text('phone'),
+    email: text('email'),
+    contactName: text('contact_name'),
+    address: text('address'),
+    city: text('city'),
+    state: text('state'),
+    country: text('country'),
+    industry: text('industry'),
+    businessSize: text('business_size'),
+    sourceUrls: jsonb('source_urls').notNull().default([]),
+    discoveryDate: timestamp('discovery_date', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .defaultNow(),
+    lastVerifiedAt: timestamp('last_verified_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    verificationStatus: researchVerification('verification_status')
+      .notNull()
+      .default('unverified'),
+    // Facts are recorded evidence; observations are measured signals;
+    // hypotheses are AI suggestions that a human must confirm. They are kept
+    // apart so a guess can never be presented as a verified fact.
+    facts: jsonb('facts').notNull().default({}),
+    observations: jsonb('observations').notNull().default({}),
+    hypotheses: jsonb('hypotheses').notNull().default([]),
+    research: jsonb('research'),
+    recommendedService: text('recommended_service'),
+    leadScore: integer('lead_score'),
+    temperature: leadTemperature('temperature').notNull().default('unknown'),
+    confidence: integer('confidence'),
+    reason: text('reason'),
+    pitch: text('pitch'),
+    callingApproach: text('calling_approach'),
+    qualificationQuestions: jsonb('qualification_questions')
+      .notNull()
+      .default([]),
+    nextAction: text('next_action'),
+    status: discoveryProspectStatus('status').notNull().default('pending_review'),
+    decidedByUserId: uuid('decided_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    decidedAt: timestamp('decided_at', { withTimezone: true, mode: 'date' }),
+    decisionNote: text('decision_note'),
+    leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('discovery_prospects_workspace_dedupe_unique').on(
+      table.workspaceId,
+      table.dedupeKey,
+    ),
+    index('discovery_prospects_workspace_status_idx').on(
+      table.workspaceId,
+      table.status,
+    ),
+    index('discovery_prospects_campaign_created_idx').on(
+      table.campaignId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    level: text('level').notNull().default('info'),
+    resourceType: text('resource_type'),
+    resourceId: uuid('resource_id'),
+    actionUrl: text('action_url'),
+    dedupeKey: text('dedupe_key'),
+    readAt: timestamp('read_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('notifications_workspace_dedupe_unique')
+      .on(table.workspaceId, table.dedupeKey)
+      .where(sql`${table.dedupeKey} is not null`),
+    index('notifications_workspace_user_created_idx').on(
+      table.workspaceId,
+      table.userId,
+      table.createdAt,
+    ),
+    index('notifications_workspace_user_read_idx').on(
+      table.workspaceId,
+      table.userId,
+      table.readAt,
+    ),
+  ],
+);
+
+export const meetings = pgTable(
+  'meetings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    clientId: uuid('client_id').references(() => clients.id, {
+      onDelete: 'set null',
+    }),
+    projectId: uuid('project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    title: text('title').notNull(),
+    status: meetingStatus('status').notNull().default('scheduled'),
+    startsAt: timestamp('starts_at', { withTimezone: true, mode: 'date' })
+      .notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true, mode: 'date' })
+      .notNull(),
+    timezone: text('timezone').notNull().default('UTC'),
+    location: text('location'),
+    // Only filled after a real provider confirms the event; see
+    // src/lib/workforce/calendar.js. Nothing here is ever fabricated.
+    meetLink: text('meet_link'),
+    calendarProvider: text('calendar_provider'),
+    calendarEventId: text('calendar_event_id'),
+    calendarHtmlLink: text('calendar_html_link'),
+    attendees: jsonb('attendees').notNull().default([]),
+    agenda: text('agenda'),
+    notes: text('notes'),
+    outcome: text('outcome'),
+    createdByUserId: uuid('created_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedByUserId: uuid('updated_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('meetings_workspace_calendar_event_unique')
+      .on(table.workspaceId, table.calendarProvider, table.calendarEventId)
+      .where(sql`${table.calendarEventId} is not null`),
+    index('meetings_workspace_starts_idx').on(table.workspaceId, table.startsAt),
+    index('meetings_workspace_lead_idx').on(table.workspaceId, table.leadId),
   ],
 );

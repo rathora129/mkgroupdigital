@@ -9,6 +9,11 @@ export const WEBSITE_AUDIT_QUEUE_NAME = 'website-audit';
 export const INTEGRATION_QUEUE_NAME = 'integration-event';
 export const EXECUTION_QUEUE_NAME = 'execution-request';
 export const WORKFLOW_QUEUE_NAME = 'workflow-run';
+export const DISCOVERY_RUN_QUEUE_NAME = 'prospect-discovery';
+export const DISCOVERY_SCAN_QUEUE_NAME = 'discovery-scan';
+export const DISCOVERY_SCAN_CRON = '*/10 * * * *';
+export const REMINDER_SCAN_QUEUE_NAME = 'followup-scan';
+export const REMINDER_SCAN_CRON = '*/15 * * * *';
 export const AI_JOB_RETRY_LIMIT = 2;
 export const AI_JOB_MAX_ATTEMPTS = AI_JOB_RETRY_LIMIT + 1;
 export const AI_JOB_EXPIRE_SECONDS = 240;
@@ -19,6 +24,8 @@ export const INTEGRATION_JOB_MAX_ATTEMPTS = INTEGRATION_JOB_RETRY_LIMIT + 1;
 export const EXECUTION_JOB_RETRY_LIMIT = 1;
 export const WORKFLOW_JOB_RETRY_LIMIT = 1;
 export const WORKFLOW_JOB_MAX_ATTEMPTS = WORKFLOW_JOB_RETRY_LIMIT + 1;
+export const DISCOVERY_RUN_RETRY_LIMIT = 2;
+export const DISCOVERY_RUN_MAX_ATTEMPTS = DISCOVERY_RUN_RETRY_LIMIT + 1;
 
 const GLOBAL_KEY = '__mkAiQueueBoss';
 
@@ -50,6 +57,9 @@ async function startQueue() {
   await boss.createQueue(INTEGRATION_QUEUE_NAME);
   await boss.createQueue(EXECUTION_QUEUE_NAME);
   await boss.createQueue(WORKFLOW_QUEUE_NAME);
+  await boss.createQueue(DISCOVERY_RUN_QUEUE_NAME);
+  await boss.createQueue(DISCOVERY_SCAN_QUEUE_NAME);
+  await boss.createQueue(REMINDER_SCAN_QUEUE_NAME);
 
   return boss;
 }
@@ -163,6 +173,35 @@ export async function enqueueWorkflowRun(runId) {
   );
 }
 
+// The run row is created before the job is enqueued. Using the run id as the
+// singleton key makes a repeated send idempotent instead of double-discovering.
+export async function enqueueDiscoveryRun(runId, { campaignId } = {}) {
+  return send(
+    DISCOVERY_RUN_QUEUE_NAME,
+    { runId, campaignId },
+    {
+      retryLimit: DISCOVERY_RUN_RETRY_LIMIT,
+      retryDelay: 30,
+      retryBackoff: true,
+      expireInSeconds: 240,
+      deleteAfterSeconds: 86_400,
+      singletonKey: runId,
+    },
+  );
+}
+
+// The scan job is a pg-boss cron entry. Calling schedule() again updates the
+// existing entry, so a worker restart does not create duplicate schedules.
+export async function ensureDiscoveryScanSchedule() {
+  const boss = await getBoss();
+  await boss.schedule(DISCOVERY_SCAN_QUEUE_NAME, DISCOVERY_SCAN_CRON, {});
+}
+
+export async function ensureReminderScanSchedule() {
+  const boss = await getBoss();
+  await boss.schedule(REMINDER_SCAN_QUEUE_NAME, REMINDER_SCAN_CRON, {});
+}
+
 async function countsFor(boss, queueName) {
   const queue = await boss.getQueue(queueName);
   if (!queue) return null;
@@ -177,15 +216,27 @@ async function countsFor(boss, queueName) {
 
 export async function getQueueCounts() {
   const boss = await getBoss();
-  const [agentRuns, research, websiteAudits, integrationEvents, executions, workflows] =
-    await Promise.all([
-      countsFor(boss, AI_QUEUE_NAME),
-      countsFor(boss, RESEARCH_QUEUE_NAME),
-      countsFor(boss, WEBSITE_AUDIT_QUEUE_NAME),
-      countsFor(boss, INTEGRATION_QUEUE_NAME),
-      countsFor(boss, EXECUTION_QUEUE_NAME),
-      countsFor(boss, WORKFLOW_QUEUE_NAME),
-    ]);
+  const [
+    agentRuns,
+    research,
+    websiteAudits,
+    integrationEvents,
+    executions,
+    workflows,
+    discoveryRuns,
+    discoveryScan,
+    reminderScan,
+  ] = await Promise.all([
+    countsFor(boss, AI_QUEUE_NAME),
+    countsFor(boss, RESEARCH_QUEUE_NAME),
+    countsFor(boss, WEBSITE_AUDIT_QUEUE_NAME),
+    countsFor(boss, INTEGRATION_QUEUE_NAME),
+    countsFor(boss, EXECUTION_QUEUE_NAME),
+    countsFor(boss, WORKFLOW_QUEUE_NAME),
+    countsFor(boss, DISCOVERY_RUN_QUEUE_NAME),
+    countsFor(boss, DISCOVERY_SCAN_QUEUE_NAME),
+    countsFor(boss, REMINDER_SCAN_QUEUE_NAME),
+  ]);
   return {
     agentRuns,
     research,
@@ -193,6 +244,9 @@ export async function getQueueCounts() {
     integrationEvents,
     executions,
     workflows,
+    discoveryRuns,
+    discoveryScan,
+    reminderScan,
   };
 }
 

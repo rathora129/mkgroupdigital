@@ -8,7 +8,7 @@ import {
 } from '@/lib/api';
 import { requirePermission } from '@/lib/auth/authorization';
 import { rateLimit } from '@/lib/rate-limit';
-import { createLead, listLeads } from '@/lib/leads/service';
+import { createLead, leadAccessFor, listLeads } from '@/lib/leads/service';
 import { leadCreateSchema, leadQuerySchema } from '@/lib/leads/validation';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +24,7 @@ export async function GET(request) {
       viewer.membership.workspaceId,
       viewer.user.id,
       query,
+      leadAccessFor(viewer),
     );
     return jsonOk(leads);
   } catch (error) {

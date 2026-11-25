@@ -276,7 +276,7 @@ export const Grid = styled.div`
   gap: 14px;
 
   ${workspaceMedia.down('md')} {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 `;
 

@@ -1,7 +1,7 @@
 import LeadsView from '@/components/workspace/leads/LeadsView';
 import { requirePermissionPage } from '@/lib/auth/authorization';
 import { hasPermission } from '@/lib/auth/permissions';
-import { getLeadOverview, listLeads } from '@/lib/leads/service';
+import { getLeadOverview, leadAccessFor, listLeads } from '@/lib/leads/service';
 import { leadQuerySchema } from '@/lib/leads/validation';
 import { listMembers } from '@/lib/workspace/service';
 
@@ -38,8 +38,8 @@ export default async function LeadsPage({ searchParams }) {
   const role = viewer.membership.role;
 
   const [leads, overview, members] = await Promise.all([
-    listLeads(workspaceId, viewer.user.id, query),
-    getLeadOverview(workspaceId, viewer.user.id),
+    listLeads(workspaceId, viewer.user.id, query, leadAccessFor(viewer)),
+    getLeadOverview(workspaceId, viewer.user.id, leadAccessFor(viewer)),
     hasPermission(role, 'leads.assign')
       ? listMembers(workspaceId)
       : Promise.resolve([]),
@@ -53,6 +53,7 @@ export default async function LeadsPage({ searchParams }) {
       query={query}
       canCreate={hasPermission(role, 'leads.create')}
       canAssign={hasPermission(role, 'leads.assign')}
+      canImport={hasPermission(role, 'leads.import')}
       timezone={viewer.workspace.timezone || 'UTC'}
     />
   );

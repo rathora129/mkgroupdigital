@@ -7,7 +7,7 @@ import {
   validateBody,
 } from '@/lib/api';
 import { requirePermission } from '@/lib/auth/authorization';
-import { addLeadNote } from '@/lib/leads/service';
+import { addLeadNote, leadAccessFor } from '@/lib/leads/service';
 import { isUuid, leadNoteSchema } from '@/lib/leads/validation';
 import { rateLimit } from '@/lib/rate-limit';
 
@@ -43,6 +43,7 @@ export async function POST(request, { params }) {
       userId: viewer.user.id,
       leadId,
       body: data.body,
+      access: leadAccessFor(viewer),
     });
     if (!activity) {
       throw new ApiError(404, 'NOT_FOUND', 'That lead could not be found.');

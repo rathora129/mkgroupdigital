@@ -17,6 +17,7 @@ import { getDb, getDbDriver } from '@/db/client';
 import {
   agents,
   clients,
+  leadActivities,
   leads,
   opportunities,
   projectActivity,
@@ -1227,6 +1228,11 @@ export async function getTask(workspaceId, taskId) {
       projectName: projects.name,
       projectReference: projects.reference,
       projectStatus: projects.status,
+      leadId: projectTasks.leadId,
+      clientId: projectTasks.clientId,
+      taskType: projectTasks.taskType,
+      dueTime: projectTasks.dueTime,
+      timezone: projectTasks.timezone,
       title: projectTasks.title,
       description: projectTasks.description,
       status: projectTasks.status,
@@ -1246,7 +1252,7 @@ export async function getTask(workspaceId, taskId) {
       updatedAt: projectTasks.updatedAt,
     })
     .from(projectTasks)
-    .innerJoin(projects, eq(projects.id, projectTasks.projectId))
+    .leftJoin(projects, eq(projects.id, projectTasks.projectId))
     .leftJoin(users, eq(users.id, projectTasks.ownerUserId))
     .where(
       and(eq(projectTasks.workspaceId, workspaceId), eq(projectTasks.id, taskId)),
@@ -1349,8 +1355,15 @@ export async function updateTask({ workspaceId, userId, taskId, data }) {
     data.collaboratorUserIds !== undefined
       ? await assertMembers(workspaceId, data.collaboratorUserIds)
       : null;
+  if (!task.projectId && data.dependsOnTaskIds?.length) {
+    throw new ApiError(
+      422,
+      'INVALID_DEPENDENCY',
+      'Follow-up tasks cannot depend on project tasks.',
+    );
+  }
   const dependencies =
-    data.dependsOnTaskIds !== undefined
+    data.dependsOnTaskIds !== undefined && task.projectId
       ? await validateTaskLinks(
           workspaceId,
           task.projectId,
@@ -1438,16 +1451,32 @@ export async function updateTask({ workspaceId, userId, taskId, data }) {
   });
 
   const statusChanged = data.status && data.status !== task.status;
-  await insertProjectActivity({
-    workspaceId,
-    projectId: task.projectId,
-    taskId,
-    userId,
-    type: statusChanged ? 'task_status' : 'task_updated',
-    body: statusChanged
-      ? `Task "${patch.title}" moved to ${TASK_STATUS_LABELS[nextStatus]}.`
-      : `Task "${patch.title}" updated.`,
-  });
+  if (task.projectId) {
+    await insertProjectActivity({
+      workspaceId,
+      projectId: task.projectId,
+      taskId,
+      userId,
+      type: statusChanged ? 'task_status' : 'task_updated',
+      body: statusChanged
+        ? `Task "${patch.title}" moved to ${TASK_STATUS_LABELS[nextStatus]}.`
+        : `Task "${patch.title}" updated.`,
+    });
+  } else if (task.leadId) {
+    // A sales follow-up has no project, so its history belongs to the lead.
+    await getDb().insert(leadActivities).values({
+      workspaceId,
+      leadId: task.leadId,
+      actorUserId: userId,
+      type:
+        nextStatus === 'completed' ? 'follow_up_completed' : 'follow_up_updated',
+      body:
+        nextStatus === 'completed'
+          ? `Follow-up completed: ${patch.title}.`
+          : `Follow-up "${patch.title}" updated to ${TASK_STATUS_LABELS[nextStatus]}.`,
+      metadata: { taskId, status: nextStatus },
+    });
+  }
 
   await recordAudit({
     workspaceId,
@@ -1548,11 +1577,17 @@ export async function listTasks(workspaceId, viewerUserId, query) {
         projectName: projects.name,
         projectReference: projects.reference,
         projectStatus: projects.status,
+        leadId: projectTasks.leadId,
+        leadCompanyName: leads.companyName,
+        taskType: projectTasks.taskType,
+        dueTime: projectTasks.dueTime,
+        timezone: projectTasks.timezone,
         clientName: clients.companyName,
       })
       .from(projectTasks)
-      .innerJoin(projects, eq(projects.id, projectTasks.projectId))
+      .leftJoin(projects, eq(projects.id, projectTasks.projectId))
       .leftJoin(clients, eq(clients.id, projects.clientId))
+      .leftJoin(leads, eq(leads.id, projectTasks.leadId))
       .leftJoin(users, eq(users.id, projectTasks.ownerUserId))
       .where(where)
       .orderBy(taskOrder(query.sort, query.direction))
@@ -1561,7 +1596,7 @@ export async function listTasks(workspaceId, viewerUserId, query) {
     db
       .select({ value: count() })
       .from(projectTasks)
-      .innerJoin(projects, eq(projects.id, projectTasks.projectId))
+      .leftJoin(projects, eq(projects.id, projectTasks.projectId))
       .where(where),
   ]);
 
@@ -1590,7 +1625,7 @@ export async function addTaskComment({ workspaceId, userId, taskId, body }) {
       title: projectTasks.title,
     })
     .from(projectTasks)
-    .innerJoin(projects, eq(projects.id, projectTasks.projectId))
+    .leftJoin(projects, eq(projects.id, projectTasks.projectId))
     .where(
       and(eq(projectTasks.workspaceId, workspaceId), eq(projectTasks.id, taskId)),
     )
@@ -1604,14 +1639,16 @@ export async function addTaskComment({ workspaceId, userId, taskId, body }) {
     body,
   });
 
-  await insertProjectActivity({
-    workspaceId,
-    projectId: task[0].projectId,
-    taskId,
-    userId,
-    type: 'task_comment',
-    body: `Comment added to "${task[0].title}".`,
-  });
+  if (task[0].projectId) {
+    await insertProjectActivity({
+      workspaceId,
+      projectId: task[0].projectId,
+      taskId,
+      userId,
+      type: 'task_comment',
+      body: `Comment added to "${task[0].title}".`,
+    });
+  }
 
   await recordAudit({
     workspaceId,
