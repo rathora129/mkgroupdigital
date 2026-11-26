@@ -6,6 +6,7 @@
 // The web app never performs provider calls inside request handlers.
 import crypto from 'node:crypto';
 import http from 'node:http';
+import { pathToFileURL } from 'node:url';
 import { isDatabaseConfigured, closeDb } from '@/db/client';
 import {
   AI_QUEUE_NAME,
@@ -67,6 +68,116 @@ function log(...args) {
   console.log(`[ai-worker ${new Date().toISOString()}]`, ...args);
 }
 
+const SENSITIVE_NAME =
+  /(?:password|passwd|pass|pwd|secret|token|apikey|authorization|auth|credential|privatekey|accesskey|clientsecret|cookie|session|signature|sig|key|username|user|login)$/i;
+const SENSITIVE_ASSIGNMENT =
+  /(^|[^\w-])(["']?)((?:[a-z0-9]+[_-])*(?:password|passwd|pass|pwd|secret|token|api[_-]?key|authorization|auth|credentials?|private[_-]?key|access[_-]?key|client[_-]?secret|cookie|session|signature|sig|key|username|user|login))\2(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|[^\s,;&]+)/gi;
+const CONNECTION_SCHEME =
+  /^(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss):$/i;
+
+function hasSensitiveQueryParameter(url) {
+  for (const key of url.searchParams.keys()) {
+    if (SENSITIVE_NAME.test(key.replace(/[^a-z0-9]/gi, ''))) return true;
+  }
+  return false;
+}
+
+function redactUrl(candidate) {
+  try {
+    const url = new URL(candidate);
+    if (
+      CONNECTION_SCHEME.test(url.protocol) ||
+      url.username ||
+      url.password ||
+      hasSensitiveQueryParameter(url)
+    ) {
+      return '[redacted URL]';
+    }
+  } catch {
+    const scheme = `${candidate.slice(0, candidate.indexOf('://'))}:`;
+    const authority = candidate.slice(candidate.indexOf('://') + 3).split(/[/?#]/, 1)[0];
+    const hasSensitiveParameter = [...candidate.matchAll(/[?&]([^=&#]+)=/g)].some(
+      ([, key]) => {
+        try {
+          return SENSITIVE_NAME.test(decodeURIComponent(key).replace(/[^a-z0-9]/gi, ''));
+        } catch {
+          return SENSITIVE_NAME.test(key.replace(/[^a-z0-9]/gi, ''));
+        }
+      },
+    );
+    if (
+      CONNECTION_SCHEME.test(scheme) ||
+      authority.includes('@') ||
+      hasSensitiveParameter
+    ) {
+      return '[redacted URL]';
+    }
+  }
+
+  return candidate;
+}
+
+export function redactDiagnosticMessage(value) {
+  let message = String(value ?? 'unknown error')
+    .replace(/\b[a-z][a-z\d+.-]*:\/\/[^\s"'<>]+/gi, redactUrl)
+    .replace(/\bBearer\s+[^\s,;&]+/gi, 'Bearer [redacted]')
+    .replace(/\b(?:params|parameters)\s*:\s*[\s\S]*$/i, '[redacted query parameters]')
+    .replace(
+      SENSITIVE_ASSIGNMENT,
+      (_match, boundary, quote, name, separator) =>
+        `${boundary}${quote}${name}${quote}${separator}[redacted]`,
+    );
+
+  for (const [key, secret] of Object.entries(process.env)) {
+    if (
+      /(?:DATABASE|CONNECTION|POSTGRES|MYSQL|MONGO|REDIS).*(?:URL|URI)|(?:PASSWORD|PASS|PASSWD|PWD|SECRET|TOKEN|JWT|API[_-]?KEY|CREDENTIAL|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|AUTHORIZATION|COOKIE|SESSION|USERNAME|USER|LOGIN)/i.test(key) &&
+      typeof secret === 'string' &&
+      secret.length > 0
+    ) {
+      message = message.split(secret).join('[redacted]');
+      const encodedSecret = encodeURIComponent(secret);
+      if (encodedSecret !== secret) {
+        message = message.split(encodedSecret).join('[redacted]');
+      }
+    }
+  }
+
+  return message;
+}
+
+function errorFields(error) {
+  const fields = {};
+  if (typeof error?.name === 'string') fields.name = redactDiagnosticMessage(error.name);
+  fields.message = redactDiagnosticMessage(error?.message ?? error);
+
+  for (const key of ['code', 'schema', 'table', 'column', 'constraint']) {
+    if (typeof error?.[key] === 'string') {
+      fields[key] = redactDiagnosticMessage(error[key]);
+    }
+  }
+
+  return fields;
+}
+
+export function getErrorDiagnostics(error) {
+  const causes = [];
+  const seen = new Set([error]);
+  let cause = error?.cause;
+
+  while (
+    cause !== null &&
+    cause !== undefined &&
+    causes.length < 5 &&
+    !seen.has(cause)
+  ) {
+    seen.add(cause);
+    causes.push(errorFields(cause));
+    cause = typeof cause === 'object' ? cause.cause : undefined;
+  }
+
+  return { outer: errorFields(error), causes };
+}
+
 async function startWorker() {
   if (!isDatabaseConfigured()) {
     throw new Error('DATABASE_URL is not configured');
@@ -88,8 +199,9 @@ async function startWorker() {
         results.push(result);
       } catch (error) {
         stats.failed += 1;
-        stats.lastError = error?.message || 'unknown error';
-        log(`job ${job.id}: retryable failure — ${stats.lastError}`);
+        const diagnostics = getErrorDiagnostics(error);
+        stats.lastError = diagnostics.outer.message;
+        log(`job ${job.id}: retryable failure — ${JSON.stringify(diagnostics)}`);
         throw error;
       }
     }
@@ -364,12 +476,14 @@ async function shutdown(signal) {
   process.exit(0);
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-startWorker().catch(async (error) => {
-  console.error(`[ai-worker] failed to start: ${error?.message || error}`);
-  await stopQueue({ graceful: false }).catch(() => {});
-  await closeDb().catch(() => {});
-  process.exit(1);
-});
+  startWorker().catch(async (error) => {
+    console.error(`[ai-worker] failed to start: ${error?.message || error}`);
+    await stopQueue({ graceful: false }).catch(() => {});
+    await closeDb().catch(() => {});
+    process.exit(1);
+  });
+}

@@ -8,6 +8,10 @@ import {
   closeDatabase,
   assertDisposableTestUrl,
 } from './support/db.mjs';
+import {
+  getErrorDiagnostics,
+  redactDiagnosticMessage,
+} from '../scripts/ai-worker.mjs';
 
 // Phase 2F-E: worker lifecycle, retry, cancellation and honest status. The
 // queue job is injected and the provider call is a deterministic stub, so
@@ -22,6 +26,89 @@ let worker = null;
 let ProviderError = null;
 let checkAiWorker = null;
 let registry = null;
+
+test('worker diagnostics redact connection URLs and sensitive query parameters', () => {
+  const cases = [
+    'postgresql://dbuser:db-password@db.example/app?sslmode=require',
+    'mysql://mysql-user:mysql-password@mysql.example/app',
+    'mongodb+srv://mongo-user:mongo-password@cluster.example/app',
+    'redis://default:redis-password@cache.example:6379/0',
+    'https://api-user:api-password@service.example/path',
+    'https://service.example/path?x-api-key=query-secret&mode=read',
+  ];
+
+  for (const diagnostic of cases) {
+    const redacted = redactDiagnosticMessage(diagnostic);
+    assert.equal(redacted.includes('://'), false);
+    assert.doesNotMatch(
+      redacted,
+      /db-password|mysql-password|mongo-password|redis-password|query-secret/,
+    );
+  }
+
+  assert.equal(
+    redactDiagnosticMessage('Failed query\nparams: ["query-param-secret"]'),
+    'Failed query\n[redacted query parameters]',
+  );
+});
+
+test('worker diagnostics redact quoted credentials with spaces and bearer tokens', () => {
+  const diagnostic = redactDiagnosticMessage(
+    'password: "a quoted password with spaces"; Bearer bearer-secret-value',
+  );
+  assert.doesNotMatch(diagnostic, /quoted password|with spaces|bearer-secret-value/);
+  assert.match(diagnostic, /password: \[redacted\]/);
+  assert.match(diagnostic, /Bearer \[redacted\]/);
+});
+
+test('worker diagnostics redact known sensitive environment values', () => {
+  const envName = 'AI_WORKER_DIAGNOSTIC_TEST_API_KEY';
+  const previous = process.env[envName];
+  const secret = 'diagnostic-env-secret-value';
+  process.env[envName] = secret;
+  try {
+    assert.equal(
+      redactDiagnosticMessage(`provider returned ${secret}`),
+      'provider returned [redacted]',
+    );
+  } finally {
+    if (previous === undefined) delete process.env[envName];
+    else process.env[envName] = previous;
+  }
+});
+
+test('worker diagnostics preserve ordinary messages and PostgreSQL error fields', () => {
+  const ordinaryMessage = 'column "agent_runs.status" does not exist';
+  assert.equal(redactDiagnosticMessage(ordinaryMessage), ordinaryMessage);
+
+  const cause = Object.assign(new Error('column does not exist'), {
+    code: '42703',
+    schema: 'public',
+    table: 'agent_runs',
+    column: 'context_sources',
+    constraint: 'agent_runs_status_check',
+  });
+  const diagnostics = getErrorDiagnostics(
+    new Error('Failed query: select ...', { cause }),
+  );
+  assert.equal(diagnostics.causes[0].code, '42703');
+  assert.equal(diagnostics.causes[0].schema, 'public');
+  assert.equal(diagnostics.causes[0].table, 'agent_runs');
+  assert.equal(diagnostics.causes[0].column, 'context_sources');
+  assert.equal(diagnostics.causes[0].constraint, 'agent_runs_status_check');
+
+  const chainRoot = new Error('root');
+  let current = chainRoot;
+  for (let index = 0; index < 7; index += 1) {
+    current.cause = new Error(`cause ${index}`);
+    current = current.cause;
+  }
+  assert.equal(getErrorDiagnostics(chainRoot).causes.length, 5);
+
+  const cycle = new Error('cycle');
+  cycle.cause = cycle;
+  assert.equal(getErrorDiagnostics(cycle).causes.length, 0);
+});
 
 if (TEST_DATABASE_URL) {
   assertDisposableTestUrl(TEST_DATABASE_URL);
