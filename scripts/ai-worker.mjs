@@ -4,6 +4,7 @@
 //   npm run ai:worker
 //
 // The web app never performs provider calls inside request handlers.
+import crypto from 'node:crypto';
 import http from 'node:http';
 import { isDatabaseConfigured, closeDb } from '@/db/client';
 import {
@@ -36,7 +37,11 @@ import {
   processWorkflowRunJob,
 } from '@/lib/integrations/worker';
 
-const PORT = Number(process.env.AI_WORKER_HEALTH_PORT || 4319);
+const PORT = Number(process.env.PORT || process.env.AI_WORKER_HEALTH_PORT || 4319);
+const HOST =
+  process.env.AI_WORKER_HEALTH_HOST ||
+  (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
+const HEALTH_SECRET = (process.env.AI_WORKER_HEALTH_SECRET || '').trim();
 const startedAt = new Date().toISOString();
 const stats = {
   processed: 0,
@@ -48,6 +53,16 @@ const stats = {
 let healthServer = null;
 let shuttingDown = false;
 
+function isAuthorizedHealthRequest(request) {
+  if (!HEALTH_SECRET) return true;
+  const authHeader = String(request.headers?.authorization || '');
+  const expected = `Bearer ${HEALTH_SECRET}`;
+  const actualBuf = Buffer.from(authHeader, 'utf8');
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  if (actualBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(actualBuf, expectedBuf);
+}
+
 function log(...args) {
   console.log(`[ai-worker ${new Date().toISOString()}]`, ...args);
 }
@@ -57,7 +72,7 @@ async function startWorker() {
     throw new Error('DATABASE_URL is not configured');
   }
 
-  const boss = await getBoss();
+  const boss = await getBoss({ worker: true });
   log(`connected; consuming queue "${AI_QUEUE_NAME}"`);
 
   await boss.work(AI_QUEUE_NAME, { batchSize: 1 }, async (jobs) => {
@@ -279,9 +294,29 @@ async function startWorker() {
   }
 
   healthServer = http.createServer(async (request, response) => {
-    if (request.url !== '/health') {
+    const pathname = String(request.url || '/').split('?')[0];
+
+    if (pathname === '/healthz') {
+      response.writeHead(shuttingDown ? 503 : 200, {
+        'content-type': 'application/json',
+        'cache-control': 'no-store',
+      });
+      response.end(JSON.stringify({ ok: !shuttingDown }));
+      return;
+    }
+
+    if (pathname !== '/health') {
       response.writeHead(404, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ ok: false, error: 'not found' }));
+      return;
+    }
+
+    if (!isAuthorizedHealthRequest(request)) {
+      response.writeHead(401, {
+        'content-type': 'application/json',
+        'cache-control': 'no-store',
+      });
+      response.end(JSON.stringify({ ok: false, error: 'unauthorized' }));
       return;
     }
 
@@ -292,7 +327,7 @@ async function startWorker() {
       queue = null;
     }
 
-    response.writeHead(200, {
+    response.writeHead(shuttingDown ? 503 : 200, {
       'content-type': 'application/json',
       'cache-control': 'no-store',
     });
@@ -303,14 +338,14 @@ async function startWorker() {
         processed: stats.processed,
         failed: stats.failed,
         lastJobAt: stats.lastJobAt,
-        lastError: stats.lastError,
+        hasError: Boolean(stats.lastError),
         queue,
       }),
     );
   });
 
-  healthServer.listen(PORT, '127.0.0.1', () => {
-    log(`health endpoint on http://127.0.0.1:${PORT}/health`);
+  healthServer.listen(PORT, HOST, () => {
+    log(`health endpoint on http://${HOST}:${PORT}/health`);
   });
 }
 

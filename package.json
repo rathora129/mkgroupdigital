@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "MK Group Digital — premium digital agency website",
+  "engines": {
+    "node": ">=22.15.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,7 +16,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:local": "node --env-file-if-exists=.env.local ./node_modules/drizzle-kit/bin.cjs migrate",
     "db:check": "drizzle-kit check",
-    "ai:worker": "node --env-file-if-exists=.env.local --import ./tests/register.mjs scripts/ai-worker.mjs",
+    "ai:worker": "node --env-file-if-exists=.env.local --import ./scripts/worker-register.mjs scripts/ai-worker.mjs",
+    "ai:worker:prod": "node --import ./scripts/worker-register.mjs scripts/ai-worker.mjs",
     "test:integration": "node --env-file-if-exists=.env.local --import ./tests/register.mjs --test tests/*.test.mjs"
   },
   "dependencies": {

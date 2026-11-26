@@ -44,8 +44,8 @@ export async function GET() {
       status: database === 'unreachable' ? 'degraded' : 'ok',
       service: 'mk-ai-workforce',
       shell: 'available',
-      phase: 4,
-      phaseLabel: '2H · Integration & Automation',
+      phase: 5,
+      phaseLabel: '2I · Sales & AI Workforce',
       checks: {
         database,
         authentication: readiness.ready ? 'configured' : 'incomplete',

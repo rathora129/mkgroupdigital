@@ -56,6 +56,9 @@ const QUEUE_LABELS = {
   integrationEvents: 'Webhook events',
   executions: 'Execution requests',
   workflows: 'Workflow runs',
+  discoveryRuns: 'Discovery runs',
+  discoveryScan: 'Discovery scheduler',
+  reminderScan: 'Follow-up reminders',
 };
 
 function QueueRow({ name, counts }) {
@@ -133,7 +136,7 @@ export default function MonitoringView({ overview, timezone }) {
               <CardTitle>
                 <Activity size={16} aria-hidden="true" /> Worker health
               </CardTitle>
-              <CardText>The existing pg-boss worker publishes a loopback health probe.</CardText>
+              <CardText>The pg-boss worker publishes a remote or local health probe.</CardText>
             </div>
             <Badge $tone={WORKER_TONES[worker.status] || 'muted'}>
               {WORKER_LABELS[worker.status] || worker.status}
@@ -160,8 +163,9 @@ export default function MonitoringView({ overview, timezone }) {
             </TableWrap>
           ) : (
             <Hint>
-              The worker is not reachable on its health port. Start it with
-              <code> npm run ai:worker</code>; queued jobs wait safely until then.
+              The worker is not reachable at its configured health URL. Ensure the
+              Railway worker is running (or run <code>npm run ai:worker</code> locally);
+              queued jobs wait safely until then.
             </Hint>
           )}
         </Card>

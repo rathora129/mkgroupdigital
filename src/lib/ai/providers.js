@@ -7,6 +7,14 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_TIMEOUT_MS = 120_000;
+const DEFAULT_MAX_TOKENS = 2048;
+const MAX_OUTPUT_TOKENS = 8192;
+
+function resolveMaxTokens(maxTokens) {
+  const parsed = Number(maxTokens);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MAX_TOKENS;
+  return Math.min(Math.round(parsed), MAX_OUTPUT_TOKENS);
+}
 
 function mapHttpError(provider, status, body) {
   const detail =
@@ -129,24 +137,153 @@ function geminiTools(tools) {
   ];
 }
 
+function openAiMessages(instructions, input, messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [
+      { role: 'system', content: instructions },
+      { role: 'user', content: input },
+    ];
+  }
+  const result = [{ role: 'system', content: instructions }];
+  for (const msg of messages) {
+    if (msg.role === 'user') {
+      result.push({ role: 'user', content: String(msg.content || '') });
+    } else if (msg.role === 'assistant') {
+      const entry = { role: 'assistant', content: msg.content || null };
+      if (Array.isArray(msg.toolCalls) && msg.toolCalls.length) {
+        entry.tool_calls = msg.toolCalls.map((call, idx) => ({
+          id: call.id || `call_${idx}`,
+          type: 'function',
+          function: {
+            name: call.name,
+            arguments:
+              typeof call.arguments === 'string'
+                ? call.arguments
+                : JSON.stringify(call.arguments || {}),
+          },
+        }));
+      }
+      result.push(entry);
+    } else if (msg.role === 'tool') {
+      result.push({
+        role: 'tool',
+        tool_call_id: msg.toolCallId || `call_${msg.index || 0}`,
+        content:
+          typeof msg.content === 'string'
+            ? msg.content
+            : JSON.stringify(msg.content ?? null),
+      });
+    }
+  }
+  return result;
+}
+
+function anthropicMessages(input, messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [{ role: 'user', content: input }];
+  }
+  const result = [];
+  let pendingTools = [];
+  const flushTools = () => {
+    if (pendingTools.length) {
+      result.push({ role: 'user', content: pendingTools });
+      pendingTools = [];
+    }
+  };
+  for (const msg of messages) {
+    if (msg.role === 'tool') {
+      pendingTools.push({
+        type: 'tool_result',
+        tool_use_id: msg.toolCallId || msg.name,
+        content:
+          typeof msg.content === 'string'
+            ? msg.content
+            : JSON.stringify(msg.content ?? null),
+      });
+      continue;
+    }
+    flushTools();
+    if (msg.role === 'user') {
+      result.push({ role: 'user', content: String(msg.content || '') });
+    } else if (msg.role === 'assistant') {
+      if (Array.isArray(msg.rawContent)) {
+        result.push({ role: 'assistant', content: msg.rawContent });
+      } else {
+        result.push({ role: 'assistant', content: String(msg.content || '') });
+      }
+    }
+  }
+  flushTools();
+  return result;
+}
+
+function geminiContents(input, messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return [{ role: 'user', parts: [{ text: input }] }];
+  }
+  const result = [];
+  let pendingToolParts = [];
+  const flushToolParts = () => {
+    if (pendingToolParts.length) {
+      result.push({ role: 'user', parts: pendingToolParts });
+      pendingToolParts = [];
+    }
+  };
+  for (const msg of messages) {
+    if (msg.role === 'tool') {
+      let responseObj;
+      if (msg.content && typeof msg.content === 'object') {
+        responseObj = msg.content;
+      } else {
+        try {
+          responseObj = JSON.parse(String(msg.content || '{}'));
+        } catch {
+          responseObj = { result: String(msg.content || '') };
+        }
+      }
+      pendingToolParts.push({
+        functionResponse: {
+          name: msg.name,
+          response: responseObj,
+        },
+      });
+      continue;
+    }
+    flushToolParts();
+    if (msg.role === 'user') {
+      result.push({ role: 'user', parts: [{ text: String(msg.content || '') }] });
+    } else if (msg.role === 'assistant') {
+      // Preserve raw model content verbatim (including thoughtSignature on
+      // functionCall parts required by Gemini 3/4 multi-turn tool calling).
+      if (msg.rawContent && Array.isArray(msg.rawContent.parts)) {
+        result.push(msg.rawContent);
+      } else {
+        result.push({ role: 'model', parts: [{ text: String(msg.content || '') }] });
+      }
+    }
+  }
+  flushToolParts();
+  return result;
+}
+
 async function callOpenAi({
   apiKey,
   model,
   instructions,
   input,
+  messages,
   tools,
   json,
+  maxTokens,
   fetchImpl,
   signal,
   timeoutMs,
 }) {
   const body = {
     model,
-    messages: [
-      { role: 'system', content: instructions },
-      { role: 'user', content: input },
-    ],
+    messages: openAiMessages(instructions, input, messages),
     temperature: 0.2,
+    max_tokens: resolveMaxTokens(maxTokens),
   };
   if (json) body.response_format = { type: 'json_object' };
   if (tools.length) body.tools = openAiTools(tools);
@@ -171,6 +308,7 @@ async function callOpenAi({
   return {
     text: typeof message.content === 'string' ? message.content : '',
     toolCalls: (message.tool_calls || []).map((call) => ({
+      ...(call.id ? { id: call.id } : {}),
       name: call.function?.name || '',
       arguments: call.function?.arguments || '',
     })),
@@ -186,8 +324,10 @@ async function callAnthropic({
   model,
   instructions,
   input,
+  messages,
   tools,
   json,
+  maxTokens,
   fetchImpl,
   signal,
   timeoutMs,
@@ -197,10 +337,10 @@ async function callAnthropic({
     : instructions;
   const body = {
     model,
-    max_tokens: 1024,
+    max_tokens: resolveMaxTokens(maxTokens),
     temperature: 0.2,
     system,
-    messages: [{ role: 'user', content: input }],
+    messages: anthropicMessages(input, messages),
   };
   if (tools.length) body.tools = anthropicTools(tools);
 
@@ -231,9 +371,11 @@ async function callAnthropic({
     toolCalls: blocks
       .filter((block) => block.type === 'tool_use')
       .map((block) => ({
+        ...(block.id ? { id: block.id } : {}),
         name: block.name || '',
         arguments: JSON.stringify(block.input || {}),
       })),
+    rawContent: blocks,
     usage: {
       promptTokens: Number(data?.usage?.input_tokens || 0),
       completionTokens: Number(data?.usage?.output_tokens || 0),
@@ -246,16 +388,21 @@ async function callGemini({
   model,
   instructions,
   input,
+  messages,
   tools,
   json,
+  maxTokens,
   fetchImpl,
   signal,
   timeoutMs,
 }) {
   const body = {
     systemInstruction: { parts: [{ text: instructions }] },
-    contents: [{ role: 'user', parts: [{ text: input }] }],
-    generationConfig: { temperature: 0.2 },
+    contents: geminiContents(input, messages),
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: resolveMaxTokens(maxTokens),
+    },
   };
   if (json) body.generationConfig.responseMimeType = 'application/json';
   if (tools.length) body.tools = geminiTools(tools);
@@ -278,9 +425,12 @@ async function callGemini({
 
   const candidate = data?.candidates?.[0];
   const parts = candidate?.content?.parts || [];
+  const candidateTokens = Number(data?.usageMetadata?.candidatesTokenCount || 0);
+  const thoughtTokens = Number(data?.usageMetadata?.thoughtsTokenCount || 0);
+
   return {
     text: parts
-      .filter((part) => typeof part.text === 'string')
+      .filter((part) => !part.thought && typeof part.text === 'string')
       .map((part) => part.text)
       .join('\n')
       .trim(),
@@ -290,9 +440,10 @@ async function callGemini({
         name: part.functionCall.name || '',
         arguments: JSON.stringify(part.functionCall.args || {}),
       })),
+    ...(candidate?.content ? { rawContent: candidate.content } : {}),
     usage: {
       promptTokens: Number(data?.usageMetadata?.promptTokenCount || 0),
-      completionTokens: Number(data?.usageMetadata?.candidatesTokenCount || 0),
+      completionTokens: candidateTokens + thoughtTokens,
     },
   };
 }
@@ -311,9 +462,11 @@ export async function generateText({
   provider,
   model,
   instructions,
-  input,
+  input = '',
+  messages = null,
   tools = [],
   json = false,
+  maxTokens = DEFAULT_MAX_TOKENS,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   signal,
   fetchImpl = globalThis.fetch,
@@ -346,7 +499,8 @@ export async function generateText({
       'Agent instructions are empty.',
     );
   }
-  if (!input || !String(input).trim()) {
+  const hasMessages = Array.isArray(messages) && messages.length > 0;
+  if (!hasMessages && (!input || !String(input).trim())) {
     throw new ProviderError('invalid_request', 'Run input is empty.');
   }
 
@@ -354,9 +508,11 @@ export async function generateText({
     apiKey,
     model,
     instructions: String(instructions),
-    input: String(input),
+    input: String(input || ''),
+    messages,
     tools,
     json,
+    maxTokens,
     fetchImpl,
     signal,
     timeoutMs,

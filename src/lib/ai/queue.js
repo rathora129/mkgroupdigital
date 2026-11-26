@@ -28,57 +28,103 @@ export const DISCOVERY_RUN_RETRY_LIMIT = 2;
 export const DISCOVERY_RUN_MAX_ATTEMPTS = DISCOVERY_RUN_RETRY_LIMIT + 1;
 
 const GLOBAL_KEY = '__mkAiQueueBoss';
+const ENSURED_QUEUES_KEY = '__mkAiQueueEnsured';
 
-export function isQueueConfigured() {
-  return Boolean(process.env.DATABASE_URL);
+export const ALL_QUEUES = [
+  AI_QUEUE_NAME,
+  RESEARCH_QUEUE_NAME,
+  WEBSITE_AUDIT_QUEUE_NAME,
+  INTEGRATION_QUEUE_NAME,
+  EXECUTION_QUEUE_NAME,
+  WORKFLOW_QUEUE_NAME,
+  DISCOVERY_RUN_QUEUE_NAME,
+  DISCOVERY_SCAN_QUEUE_NAME,
+  REMINDER_SCAN_QUEUE_NAME,
+];
+
+// pg-boss relies on session-level features (advisory locks, persistent pools,
+// optional LISTEN/NOTIFY) that are unreliable over transaction-mode PgBouncer.
+// Prefer a dedicated/unpooled TCP URL when supplied, falling back to DATABASE_URL.
+export function getQueueDatabaseUrl() {
+  return (
+    process.env.QUEUE_DATABASE_URL ||
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.DATABASE_URL ||
+    ''
+  );
 }
 
-async function startQueue() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is not configured');
+export function isQueueConfigured() {
+  return Boolean(
+    process.env.QUEUE_DATABASE_URL ||
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.DATABASE_URL
+  );
+}
+
+function getEnsuredSet() {
+  if (!globalThis[ENSURED_QUEUES_KEY]) {
+    globalThis[ENSURED_QUEUES_KEY] = new Set();
+  }
+  return globalThis[ENSURED_QUEUES_KEY];
+}
+
+async function ensureQueue(boss, name) {
+  const ensured = getEnsuredSet();
+  if (ensured.has(name)) return;
+  await boss.createQueue(name);
+  ensured.add(name);
+}
+
+async function startQueue({ worker = false } = {}) {
+  const connectionString = getQueueDatabaseUrl();
+  if (!connectionString) {
+    throw new Error('No queue database connection configured');
   }
 
+  const maxPool = Number(process.env.QUEUE_POOL_MAX || (worker ? 4 : 2));
   const boss = new PgBoss({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     schema: 'pgboss',
-    application_name: 'mk-ai-workforce',
-    max: 4,
-    connectionTimeoutMillis: 5_000,
+    application_name: worker ? 'mk-ai-workforce-worker' : 'mk-ai-workforce-web',
+    max: Number.isFinite(maxPool) && maxPool > 0 ? maxPool : 2,
+    connectionTimeoutMillis: 10_000,
+    supervise: worker,
+    schedule: worker,
   });
 
   boss.on('error', (error) => {
     console.error(`[ai-queue] ${error?.message || 'unknown error'}`);
   });
 
-  await boss.start();
-  await boss.createQueue(AI_QUEUE_NAME);
-  await boss.createQueue(RESEARCH_QUEUE_NAME);
-  await boss.createQueue(WEBSITE_AUDIT_QUEUE_NAME);
-  await boss.createQueue(INTEGRATION_QUEUE_NAME);
-  await boss.createQueue(EXECUTION_QUEUE_NAME);
-  await boss.createQueue(WORKFLOW_QUEUE_NAME);
-  await boss.createQueue(DISCOVERY_RUN_QUEUE_NAME);
-  await boss.createQueue(DISCOVERY_SCAN_QUEUE_NAME);
-  await boss.createQueue(REMINDER_SCAN_QUEUE_NAME);
+  await boss.start({ attempts: 3 });
+
+  if (worker) {
+    for (const queueName of ALL_QUEUES) {
+      await ensureQueue(boss, queueName);
+    }
+  }
 
   return boss;
 }
 
-export function getBoss() {
+export function getBoss({ worker = false } = {}) {
   if (!globalThis[GLOBAL_KEY]) {
-    const promise = startQueue();
+    const promise = startQueue({ worker });
     globalThis[GLOBAL_KEY] = promise;
     promise.catch(() => {
       if (globalThis[GLOBAL_KEY] === promise) {
         delete globalThis[GLOBAL_KEY];
       }
+      getEnsuredSet().clear();
     });
   }
   return globalThis[GLOBAL_KEY];
 }
 
 async function send(queue, data, options) {
-  const boss = await getBoss();
+  const boss = await getBoss({ worker: false });
+  await ensureQueue(boss, queue);
   const jobId = await boss.send(queue, data, options);
   if (!jobId) {
     throw new Error(`The ${queue} queue did not accept the job`);
@@ -253,6 +299,7 @@ export async function getQueueCounts() {
 export async function stopQueue({ graceful = true } = {}) {
   const promise = globalThis[GLOBAL_KEY];
   delete globalThis[GLOBAL_KEY];
+  getEnsuredSet().clear();
   if (!promise) return;
 
   try {

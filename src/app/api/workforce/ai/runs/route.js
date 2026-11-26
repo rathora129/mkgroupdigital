@@ -53,6 +53,7 @@ export async function POST(request) {
       userId: viewer.user.id,
       input: data.input,
       idempotencyKey: data.idempotencyKey || null,
+      contextRefs: data.contextRefs || null,
     });
 
     return jsonOk({ run, reused }, reused ? 200 : 201);
