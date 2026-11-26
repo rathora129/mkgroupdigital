@@ -2,7 +2,7 @@
 
 Production website for MK Group Digital — a full-service digital agency working with clients in India and worldwide.
 
-Live domain: `https://mkgroupdigital.com`
+Live domain: `https://www.seoindexer.in/`
 
 ## Stack
 
