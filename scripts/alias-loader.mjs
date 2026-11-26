@@ -14,9 +14,7 @@ export function resolve(specifier, context, nextResolve) {
     );
   }
 
-  if (specifier.startsWith('next/') && !path.extname(specifier)) {
-    return nextResolve(`${specifier}.js`, context);
-  }
+  
 
   if (
     context.parentURL?.startsWith(srcRoot) &&
