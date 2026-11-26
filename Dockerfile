@@ -10,7 +10,6 @@ RUN npm ci --omit=dev
 COPY src ./src
 COPY scripts ./scripts
 
-COPY tests ./tests
 
 RUN addgroup -S worker && adduser -S worker -G worker
 USER worker
